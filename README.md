@@ -105,6 +105,125 @@ applied, errors = engine.auto_apply_safe_changes(proposals)
 print(f"Applied {applied} changes automatically")
 ```
 
+## How the Execution Graph Works
+
+The brain's execution graph uses a **hydrology metaphor** - think of AI workflows as water flowing through channels. The graph consists of **nodes** (processing stations), **edges** (channels between nodes), and **relationships** (learned correlations).
+
+### Execution Flow Overview
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                        BRAIN EXECUTION FLOW                                  │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│   USER REQUEST                                                               │
+│        │                                                                     │
+│        ▼                                                                     │
+│   ┌─────────┐    LAMINAR     ┌─────────┐    LAMINAR     ┌───────────┐       │
+│   │  PRIME  │ ───────────▶   │  FLOW   │ ───────────▶   │ TRIBUTARY │       │
+│   │ (init)  │                │(reason) │                │  (tools)  │       │
+│   └─────────┘                └────┬────┘                └─────┬─────┘       │
+│                                   │                           │              │
+│                          TURBULENT│(retry)            DREDGING│(memory)     │
+│                                   │                           │              │
+│                                   ▼                           ▼              │
+│                              ┌─────────┐                ┌──────────┐         │
+│                              │  GATE   │◄───────────────│ SEDIMENT │         │
+│                              │(verify) │                │ (store)  │         │
+│                              └────┬────┘                └──────────┘         │
+│                                   │                                          │
+│                                   ▼                                          │
+│                             ┌──────────┐     DECOMPOSES    ┌───────┐         │
+│                             │ DECISION │ ─────────────────▶│ DELTA │         │
+│                             │ (route)  │    (parallel)     │(merge)│         │
+│                             └────┬─────┘                   └───┬───┘         │
+│                                  │                             │             │
+│                    ┌─────────────┼─────────────┐               │             │
+│                    ▼             ▼             ▼               │             │
+│              ┌─────────┐   ┌─────────┐   ┌──────────┐          │             │
+│              │ SUCCESS │   │ FAILURE │   │ ESCALATE │◄─────────┘             │
+│              │(terminal)   │(terminal)   │(terminal)│                        │
+│              └─────────┘   └─────────┘   └──────────┘                        │
+│                                                                              │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+### Node Types Table
+
+| Node Type | Icon | LLM Call? | Purpose | When to Use | Example |
+|-----------|------|-----------|---------|-------------|---------|
+| **PRIME** | 🌊 | Yes | Initialize workflow, set ontology and bounds | First node - sets context, constraints, and initial understanding | Parse user request, establish scope |
+| **FLOW** | 💧 | Yes | Main reasoning in the "mainstream" | Core thinking, planning, analysis, synthesis | Research planning, content generation |
+| **TRIBUTARY** | 🔧 | No | Sandboxed tool/skill execution | When external tools are needed (search, API calls, calculations) | Web search, database query, file operations |
+| **DELTA** | 🔀 | Optional | Merge parallel task results | After parallel work completes, combine artifacts | Merge research from multiple sources |
+| **SEDIMENT** | 💎 | No | Write verified facts to long-term memory | Store important findings with provenance | Save verified research findings |
+| **GATE** | ✅ | No | Quality check against criteria | Verify output meets standards before proceeding | Check confidence threshold, validate format |
+| **DECISION** | 🚦 | **NO** | **Pure logic routing - NO LLM** | **Deterministic branching based on data** | Route by confidence score, check conditions |
+| **TERMINAL** | 🏁 | No | End state (success/failure/escalate) | Workflow completion | Return results, report failure, escalate to human |
+
+### Edge Types Table
+
+| Edge Type | Symbol | Purpose | Configuration | When to Use |
+|-----------|--------|---------|---------------|-------------|
+| **LAMINAR** | → | Happy path, smooth transition | `guard`: condition to proceed | Normal flow between steps |
+| **TURBULENT** | ↺ | Retry loop with bounds | `max_retries`: prevents infinite loops | When quality gate fails, retry previous step |
+| **DREDGING** | ⬆ | Pull from long-term memory | `query`: what to retrieve | Load relevant facts from SEDIMENT |
+| **PERMEABLE** | ⟷ | Cross-agent state sharing | `source_agent`: which agent | Multi-agent workflows sharing context |
+| **DECOMPOSES** | ⤵ | Break goal into tasks (max 3-4) | `max_children`: chunk limit | Large goals that need sub-tasks |
+| **DEPENDS** | ⏸ | Blocking dependency | `required_nodes`: what must complete | Prevent skipping prerequisites |
+
+### Output Files Table
+
+| Output File | Format | Purpose | Contents | Use Case |
+|-------------|--------|---------|----------|----------|
+| **final_state.json** | JSON | Complete session snapshot | Current node, all data, counters, metadata | Resume sessions, inspect results |
+| **audit.jsonl** | JSONL | Step-by-step execution log | Timestamp, node, action, signals for each step | Debugging, compliance, learning analysis |
+| **memory.jsonl** | JSONL | Verified facts with provenance | Facts, confidence scores, semantic triplets | Long-term knowledge, future runs |
+| **evolution/*.json** | JSON | Learning proposals and changes | Proposed improvements, applied changes | Track brain evolution over time |
+
+### Guard Expressions
+
+Guards are Python-like expressions that control edge traversal:
+
+| Pattern | Example | What It Checks |
+|---------|---------|----------------|
+| Data presence | `state.data.get('ready') == True` | Is 'ready' flag set? |
+| Threshold | `state.data.get('confidence', 0) >= 0.8` | Is confidence high enough? |
+| List check | `len(state.data.get('errors', [])) == 0` | Are there zero errors? |
+| Counter check | `state.counters.retries.get('verify', 0) < 3` | Under retry limit? |
+| Contains | `'critical' not in state.data.get('issues', [])` | No critical issues? |
+
+### Decision Node Routing (The Key Innovation)
+
+DECISION nodes eliminate "vibe-based" LLM routing with pure logic:
+
+```yaml
+- id: "confidence_router"
+  type: "decision"
+  purpose: "Route based on confidence - NO LLM call"
+  decision_config:
+    variable: "state.data.confidence"
+    rules:
+      - condition: ">= 0.9"
+        target: "finalize"      # High confidence → finish
+      - condition: ">= 0.7"
+        target: "verify"        # Medium → verify more
+      - condition: "default"
+        target: "escalate"      # Low → ask human
+```
+
+### Why This Architecture Matters
+
+| Traditional LLM Agent | Brain Creator Factory |
+|----------------------|----------------------|
+| LLM decides "what next" (probabilistic) | Graph guards decide "what next" (deterministic) |
+| State hidden in context window | State externalized in structured objects |
+| Drifts over long sessions | Bounded by explicit graph structure |
+| Hard to debug/audit | Full JSONL audit trail |
+| Can't reliably retry | TURBULENT edges with max_retries |
+| No learning | Self-improving via learning engine |
+| Single execution path | Parallel with DELTA merge |
+
 ## Architecture
 
 ```
