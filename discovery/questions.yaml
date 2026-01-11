@@ -1,0 +1,208 @@
+# Discovery Questions for Brain Creation
+# These guide the interview process to understand user needs
+
+discovery:
+  version: "1.0.0"
+
+  phases:
+    - id: "problem"
+      name: "Problem Understanding"
+      required: true
+      questions:
+        - id: "q_problem"
+          text: "What problem are you trying to solve? Be specific about the pain point."
+          type: "open"
+          required: true
+          follow_ups:
+            - condition: "answer_is_vague"
+              ask: "Can you give me a concrete example of when this problem occurs?"
+
+        - id: "q_outcome"
+          text: "What would a successful outcome look like? Describe the ideal result."
+          type: "open"
+          required: true
+
+        - id: "q_stakeholders"
+          text: "Who or what will use the output of this brain?"
+          type: "open"
+          required: true
+
+        - id: "q_frequency"
+          text: "How often will this brain need to run?"
+          type: "choice"
+          options:
+            - "Once (single use)"
+            - "On-demand (when triggered)"
+            - "Scheduled (regular intervals)"
+            - "Continuous (always running)"
+
+    - id: "inputs"
+      name: "Inputs & Resources"
+      required: true
+      questions:
+        - id: "q_inputs"
+          text: "What inputs or data will be available to the brain?"
+          type: "multi"
+          hint: "e.g., user queries, documents, APIs, databases"
+          required: true
+
+        - id: "q_tools"
+          text: "What tools, APIs, or external services should the brain be able to use?"
+          type: "multi"
+          hint: "e.g., web search, email, CRM, code execution"
+          required: false
+
+        - id: "q_skills"
+          text: "Are there any existing skills or workflows it should integrate with?"
+          type: "multi"
+          hint: "e.g., existing automation, templates, processes"
+          required: false
+
+    - id: "constraints"
+      name: "Constraints & Rules"
+      required: true
+      questions:
+        - id: "q_must_do"
+          text: "What MUST the brain always do? (Hard requirements)"
+          type: "multi"
+          hint: "e.g., always cite sources, always verify facts"
+          required: true
+
+        - id: "q_must_not"
+          text: "What must the brain NEVER do? (Hard restrictions)"
+          type: "multi"
+          hint: "e.g., never make up data, never bypass approval"
+          required: true
+
+        - id: "q_limits"
+          text: "Are there time, cost, or resource limits?"
+          type: "open"
+          required: false
+
+        - id: "q_compliance"
+          text: "Are there compliance, legal, or policy requirements?"
+          type: "open"
+          required: false
+
+    - id: "process"
+      name: "Process & Workflow"
+      required: true
+      questions:
+        - id: "q_existing_process"
+          text: "Is there an existing process or workflow? If so, describe it."
+          type: "open"
+          required: false
+          informs: "workflow_mapping"
+
+        - id: "q_decisions"
+          text: "What are the key decision points in the process?"
+          type: "multi"
+          hint: "e.g., 'after research, decide if we have enough info'"
+          required: true
+
+        - id: "q_failure_points"
+          text: "Where do things typically go wrong?"
+          type: "multi"
+          required: false
+
+        - id: "q_human_checkpoints"
+          text: "What steps need human approval vs. can be fully automated?"
+          type: "structured"
+          structure:
+            needs_approval: []
+            can_automate: []
+          required: true
+
+    - id: "quality"
+      name: "Quality & Success Criteria"
+      required: true
+      questions:
+        - id: "q_success_measure"
+          text: "How will you know if the output is good? What makes it 'correct'?"
+          type: "open"
+          required: true
+
+        - id: "q_quality_checks"
+          text: "What specific quality checks should happen?"
+          type: "multi"
+          hint: "e.g., grammar check, fact verification, format validation"
+          required: true
+
+        - id: "q_failure_handling"
+          text: "What should happen when something fails?"
+          type: "choice"
+          options:
+            - "Retry automatically"
+            - "Ask for clarification"
+            - "Escalate to human"
+            - "Fail and report"
+          required: true
+
+    - id: "learning"
+      name: "Learning & Adaptation"
+      required: true
+      questions:
+        - id: "q_should_learn"
+          text: "Should the brain learn and improve from its runs?"
+          type: "boolean"
+          required: true
+
+        - id: "q_auto_changes"
+          text: "What types of changes can be made automatically vs. need approval?"
+          type: "structured"
+          condition: "q_should_learn == true"
+          structure:
+            auto_allowed:
+              - "Adjust timing/priorities"
+              - "Update relationship weights"
+            needs_approval:
+              - "Change workflow structure"
+              - "Add new skills"
+              - "Modify constraints"
+
+        - id: "q_feedback_sources"
+          text: "How will the brain receive feedback to learn from?"
+          type: "multi"
+          condition: "q_should_learn == true"
+          options:
+            - "Explicit user feedback"
+            - "Success/failure outcomes"
+            - "Quality scores"
+            - "Comparison to expected results"
+
+# Templates for different brain types
+brain_type_detection:
+  research:
+    indicators:
+      - "research"
+      - "find information"
+      - "analyze"
+      - "investigate"
+      - "summarize"
+    template: "research"
+
+  execution:
+    indicators:
+      - "do"
+      - "execute"
+      - "create"
+      - "build"
+      - "send"
+      - "automate"
+    template: "execution"
+
+  decision:
+    indicators:
+      - "decide"
+      - "choose"
+      - "evaluate"
+      - "recommend"
+      - "compare"
+    template: "decision"
+
+  hybrid:
+    indicators:
+      - "research and then"
+      - "find and create"
+      - "analyze and recommend"
+    template: "universal"

@@ -1,0 +1,73 @@
+# Universal Brain Template - Manifest
+# Replace {{placeholders}} with actual values
+
+brain:
+  id: "{{brain_id}}"
+  name: "{{brain_name}}"
+  version: "1.0.0"
+  created_at: "{{created_at}}"
+  updated_at: "{{updated_at}}"
+  purpose: "{{purpose}}"
+
+objectives:
+  primary_goal: "{{primary_goal}}"
+  objectives:
+    - description: "{{objective_1}}"
+      success_criteria:
+        - "{{criterion_1}}"
+      priority: 1
+  deliverables:
+    - name: "{{deliverable_name}}"
+      format: "{{format}}"
+      required: true
+
+constraints:
+  must_do:
+    - "Follow all provided constraints"
+    - "Verify facts before including them"
+    - "Cite sources where applicable"
+  must_not:
+    - "Fabricate information"
+    - "Skip verification steps"
+    - "Ignore user constraints"
+
+learning:
+  enabled: true
+  mode: "auto_safe"
+  auto_update:
+    edge_priorities: true
+    edge_weights: true
+    relationship_weights: true
+    max_retries: true
+    guard_thresholds: false
+    node_prompts: false
+    add_nodes: false
+    remove_nodes: false
+    add_edges: false
+    remove_edges: false
+  requires_approval:
+    - "structural_changes"
+    - "constraint_changes"
+    - "new_skills"
+  feedback_sources:
+    - "outcome"
+    - "user_feedback"
+    - "quality_scores"
+
+execution:
+  max_steps: 100
+  max_parallel: 5
+  timeout_seconds: 3600
+  max_retries: 3
+
+skills:
+  available:
+    - "echo"
+    - "calculator"
+  auto_discover: true
+
+metadata:
+  tags:
+    - "universal"
+    - "template"
+  notes: "Generated from universal template"

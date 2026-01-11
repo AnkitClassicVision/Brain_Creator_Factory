@@ -1,0 +1,779 @@
+# Universal Brain Template
+# A complete, runnable brain workflow template
+
+graph:
+  name: "{{brain_name}}"
+  version: "1.0.0"
+
+start_node: "prime"
+terminal_nodes: ["success", "failure", "escalate"]
+
+nodes:
+  # ============================================
+  # PRIME - Initialize the workflow
+  # ============================================
+  - id: "prime"
+    type: "prime"
+    stage: "intake"
+    purpose: "Initialize the workflow, set up context and constraints"
+
+    prompt: |
+      You are initializing a workflow to accomplish a goal.
+
+      USER REQUEST:
+      {{user_request}}
+
+      BRAIN PURPOSE:
+      {{brain.purpose}}
+
+      PRIMARY GOAL:
+      {{brain.objectives.primary_goal}}
+
+      CONSTRAINTS:
+      Must do: {{brain.constraints.must_do}}
+      Must not: {{brain.constraints.must_not}}
+
+      Your task:
+      1. Parse the user request and confirm understanding
+      2. Identify what information/research is needed
+      3. Set up the initial plan structure
+
+      Output JSON with:
+      - understood_request: Your interpretation of what's being asked
+      - information_needed: List of things to research/gather
+      - initial_approach: High-level approach to accomplish the goal
+      - constraints_acknowledged: List of constraints you'll follow
+      - ready_to_proceed: true/false
+
+    output_schema:
+      type: "object"
+      required: ["understood_request", "ready_to_proceed"]
+      properties:
+        understood_request:
+          type: "string"
+        information_needed:
+          type: "array"
+          items:
+            type: "string"
+        initial_approach:
+          type: "string"
+        constraints_acknowledged:
+          type: "array"
+          items:
+            type: "string"
+        ready_to_proceed:
+          type: "boolean"
+        clarification_questions:
+          type: "array"
+          items:
+            type: "string"
+
+    state_writes:
+      - path: "understood_request"
+        from: "output.understood_request"
+      - path: "approach"
+        from: "output.initial_approach"
+      - path: "information_needed"
+        from: "output.information_needed"
+
+    memory:
+      dredge: []
+      write: false
+
+    parallel:
+      spawn: false
+
+  # ============================================
+  # INTAKE - Clarify and confirm
+  # ============================================
+  - id: "intake"
+    type: "flow"
+    stage: "intake"
+    purpose: "Ensure we have all needed information before proceeding"
+
+    prompt: |
+      You are at the INTAKE stage.
+
+      UNDERSTOOD REQUEST: {{state.data.understood_request}}
+      APPROACH: {{state.data.approach}}
+      INFORMATION NEEDED: {{state.data.information_needed}}
+
+      Review the understanding and approach. Check if:
+      1. The request is clear and complete
+      2. We have enough context to proceed
+      3. Any clarifications are needed
+
+      Output JSON with:
+      - request_clear: true if request is fully understood
+      - context_sufficient: true if we can proceed
+      - clarifications_needed: list of questions if needed
+      - refined_approach: updated approach if needed
+      - ready_for_research: true if we can move to research
+
+    output_schema:
+      type: "object"
+      required: ["request_clear", "ready_for_research"]
+      properties:
+        request_clear:
+          type: "boolean"
+        context_sufficient:
+          type: "boolean"
+        clarifications_needed:
+          type: "array"
+          items:
+            type: "string"
+        refined_approach:
+          type: "string"
+        ready_for_research:
+          type: "boolean"
+
+    state_writes:
+      - path: "ready_for_research"
+        from: "output.ready_for_research"
+      - path: "clarifications_needed"
+        from: "output.clarifications_needed"
+
+    memory:
+      dredge:
+        - query: "{{state.data.understood_request}}"
+          as_key: "prior_knowledge"
+          limit: 5
+      write: false
+
+    parallel:
+      spawn: false
+
+  # ============================================
+  # RESEARCH - Gather information
+  # ============================================
+  - id: "research"
+    type: "flow"
+    stage: "research"
+    purpose: "Research and gather information needed for the task"
+
+    prompt: |
+      You are at the RESEARCH stage.
+
+      GOAL: {{state.data.understood_request}}
+      APPROACH: {{state.data.approach}}
+      INFORMATION NEEDED: {{state.data.information_needed}}
+      PRIOR KNOWLEDGE: {{dredged_memory.prior_knowledge}}
+      AVAILABLE SKILLS: {{available_skills}}
+
+      Your task:
+      1. Identify what research tasks to perform
+      2. Spawn parallel research tasks if beneficial
+      3. Compile findings into structured facts
+
+      To spawn parallel research tasks, include:
+      {
+        "parallel_tasks": [
+          {
+            "task_id": "unique_id",
+            "skill": "skill_name",
+            "instruction": "what to do",
+            "wait": true
+          }
+        ]
+      }
+
+      Output JSON with:
+      - research_tasks: list of research actions taken
+      - findings: list of discovered information
+      - verified_facts: list of verified facts (with sources)
+      - open_questions: questions that couldn't be answered
+      - research_complete: true if sufficient research done
+      - parallel_tasks: optional list of parallel tasks to spawn
+
+    output_schema:
+      type: "object"
+      required: ["findings", "research_complete"]
+      properties:
+        research_tasks:
+          type: "array"
+          items:
+            type: "string"
+        findings:
+          type: "array"
+          items:
+            type: "object"
+            properties:
+              topic:
+                type: "string"
+              content:
+                type: "string"
+              source:
+                type: "string"
+              confidence:
+                type: "number"
+        verified_facts:
+          type: "array"
+          items:
+            type: "object"
+            properties:
+              fact_id:
+                type: "string"
+              text:
+                type: "string"
+              confidence:
+                type: "number"
+        open_questions:
+          type: "array"
+          items:
+            type: "string"
+        research_complete:
+          type: "boolean"
+        parallel_tasks:
+          type: "array"
+
+    state_writes:
+      - path: "findings"
+        from: "output.findings"
+      - path: "verified_facts"
+        from: "output.verified_facts"
+      - path: "open_questions"
+        from: "output.open_questions"
+      - path: "research_complete"
+        from: "output.research_complete"
+
+    memory:
+      dredge:
+        - query: "relevant to {{state.data.understood_request}}"
+          as_key: "prior_knowledge"
+          limit: 10
+      write: false
+
+    parallel:
+      spawn: true
+      max_concurrent: 3
+
+  # ============================================
+  # SEDIMENT_RESEARCH - Commit verified facts
+  # ============================================
+  - id: "sediment_research"
+    type: "sediment"
+    stage: "research"
+    purpose: "Commit verified facts to long-term memory"
+
+    memory:
+      write: true
+      source: "verified_facts"
+      require_triplets: false
+      conflict_action: "flag"
+
+  # ============================================
+  # PLAN - Create execution plan
+  # ============================================
+  - id: "plan"
+    type: "flow"
+    stage: "planning"
+    purpose: "Create concrete execution plan"
+
+    prompt: |
+      You are at the PLANNING stage.
+
+      GOAL: {{brain.objectives.primary_goal}}
+      APPROACH: {{state.data.approach}}
+      FINDINGS: {{state.data.findings}}
+      VERIFIED FACTS: {{dredged_memory.verified_facts}}
+      CONSTRAINTS: {{brain.constraints}}
+      DELIVERABLES REQUIRED: {{brain.objectives.deliverables}}
+
+      Create a concrete execution plan:
+      1. Break the goal into actionable steps
+      2. Identify which skills/tools to use for each step
+      3. Define success criteria for each step
+      4. Identify what can be parallelized
+      5. Note risks and mitigations
+
+      Output JSON with:
+      - steps: ordered list of execution steps
+      - skill_usage: mapping of steps to skills
+      - success_criteria: how to verify each step
+      - parallelizable: which steps can run in parallel
+      - risks: potential issues and mitigations
+      - ready_to_execute: true if plan is complete
+
+    output_schema:
+      type: "object"
+      required: ["steps", "ready_to_execute"]
+      properties:
+        steps:
+          type: "array"
+          items:
+            type: "object"
+            properties:
+              step_id:
+                type: "string"
+              action:
+                type: "string"
+              skill:
+                type: "string"
+              inputs:
+                type: "array"
+              outputs:
+                type: "array"
+              success_criterion:
+                type: "string"
+              can_parallelize:
+                type: "boolean"
+        skill_usage:
+          type: "object"
+        risks:
+          type: "array"
+          items:
+            type: "object"
+            properties:
+              risk:
+                type: "string"
+              mitigation:
+                type: "string"
+        ready_to_execute:
+          type: "boolean"
+
+    state_writes:
+      - path: "execution_plan"
+        from: "output.steps"
+      - path: "risks"
+        from: "output.risks"
+      - path: "ready_to_execute"
+        from: "output.ready_to_execute"
+
+    memory:
+      dredge:
+        - query: "lessons about execution"
+          as_key: "lessons"
+          limit: 5
+      write: false
+
+  # ============================================
+  # EXECUTE - Execute the plan
+  # ============================================
+  - id: "execute"
+    type: "flow"
+    stage: "execution"
+    purpose: "Execute the plan step by step"
+
+    prompt: |
+      You are at the EXECUTION stage.
+
+      PLAN: {{state.data.execution_plan}}
+      CURRENT_STEP: {{state.data.current_step_index}}
+      COMPLETED_STEPS: {{state.data.completed_steps}}
+      STEP_RESULTS: {{state.data.step_results}}
+      AVAILABLE SKILLS: {{available_skills}}
+
+      Execute the current step(s):
+      1. Identify what to execute now
+      2. Spawn parallel tasks if steps can be parallelized
+      3. Call necessary skills
+      4. Capture results
+      5. Track progress
+
+      Output JSON with:
+      - current_step: which step we're executing
+      - actions_taken: what we did
+      - step_result: result of the step
+      - step_success: true if step succeeded
+      - parallel_tasks: tasks to spawn in parallel
+      - next_step_index: index of next step
+      - all_steps_complete: true if we're done
+
+    output_schema:
+      type: "object"
+      required: ["step_success", "all_steps_complete"]
+      properties:
+        current_step:
+          type: "string"
+        actions_taken:
+          type: "array"
+          items:
+            type: "string"
+        step_result:
+          type: "object"
+        step_success:
+          type: "boolean"
+        error:
+          type: "string"
+        parallel_tasks:
+          type: "array"
+        next_step_index:
+          type: "integer"
+        all_steps_complete:
+          type: "boolean"
+        execution_complete:
+          type: "boolean"
+
+    state_writes:
+      - path: "current_step_index"
+        from: "output.next_step_index"
+      - path: "execution_complete"
+        from: "output.all_steps_complete"
+
+    parallel:
+      spawn: true
+      strategy: "by_step"
+
+  # ============================================
+  # VERIFY - Quality gate
+  # ============================================
+  - id: "verify"
+    type: "gate"
+    stage: "verification"
+    purpose: "Verify that execution meets success criteria"
+
+    gate_config:
+      criteria:
+        - name: "execution_complete"
+          check: "state.data.get('execution_complete', False) == True"
+        - name: "no_critical_errors"
+          check: "len(state.data.get('critical_errors', [])) == 0"
+        - name: "deliverables_exist"
+          check: "state.data.get('deliverables', None) is not None"
+
+      on_pass: "finalize"
+      on_fail: "execute"
+      max_retries: 3
+
+  # ============================================
+  # FINALIZE - Prepare final output
+  # ============================================
+  - id: "finalize"
+    type: "flow"
+    stage: "finalization"
+    purpose: "Prepare and format final deliverables"
+
+    prompt: |
+      You are at the FINALIZATION stage.
+
+      ORIGINAL REQUEST: {{user_request}}
+      GOAL: {{brain.objectives.primary_goal}}
+      DELIVERABLE REQUIREMENTS: {{brain.objectives.deliverables}}
+      EXECUTION RESULTS: {{state.data.step_results}}
+      CONSTRAINTS: {{brain.constraints}}
+
+      Prepare the final output:
+      1. Format according to deliverable specifications
+      2. Ensure all requirements are met
+      3. Include sources and provenance
+      4. Add confidence assessment
+      5. Summarize what was accomplished
+
+      Output JSON with:
+      - final_artifact: the main deliverable
+      - summary: what was accomplished
+      - sources: list of sources used
+      - confidence: overall confidence score
+      - notes: any important notes
+      - done: true to signal completion
+
+    output_schema:
+      type: "object"
+      required: ["final_artifact", "done"]
+      properties:
+        final_artifact:
+          type: "object"
+        summary:
+          type: "string"
+        sources:
+          type: "array"
+        confidence:
+          type: "number"
+        notes:
+          type: "string"
+        done:
+          type: "boolean"
+
+    state_writes:
+      - path: "final_artifact"
+        from: "output.final_artifact"
+      - path: "summary"
+        from: "output.summary"
+      - path: "done"
+        from: "output.done"
+      - path: "deliverables.main"
+        from: "output.final_artifact"
+
+  # ============================================
+  # DECISION NODE - Pure routing logic (no LLM)
+  # ============================================
+  - id: "confidence_router"
+    type: "decision"
+    stage: "verification"
+    purpose: "Route based on confidence score - NO LLM call"
+
+    decision_config:
+      variable: "state.data.confidence"
+      description: "Route execution based on confidence level"
+      rules:
+        - condition: ">= 0.9"
+          target: "finalize"
+        - condition: ">= 0.7"
+          target: "verify"
+        - condition: ">= 0.4"
+          target: "research"
+        - condition: "default"
+          target: "escalate"
+
+  # ============================================
+  # TERMINAL NODES
+  # ============================================
+  - id: "success"
+    type: "terminal"
+    stage: "complete"
+    purpose: "Successful completion"
+
+    on_reach:
+      - action: "trigger_learning"
+        outcome: "success"
+      - action: "write_memory"
+        content: "successful_execution_pattern"
+
+  - id: "failure"
+    type: "terminal"
+    stage: "complete"
+    purpose: "Unrecoverable failure"
+
+    on_reach:
+      - action: "trigger_learning"
+        outcome: "failure"
+      - action: "log_failure"
+
+  - id: "escalate"
+    type: "terminal"
+    stage: "escalated"
+    purpose: "Needs human intervention"
+
+    on_reach:
+      - action: "notify_human"
+        message: "{{state.data.escalation_reason}}"
+
+# ============================================
+# EDGES
+# ============================================
+edges:
+  # Prime -> Intake
+  - id: "e_prime_intake"
+    from: "prime"
+    to: "intake"
+    type: "laminar"
+    guard: "state.data.get('ready_to_proceed', False) == True"
+    priority: 1
+
+  - id: "e_prime_clarify"
+    from: "prime"
+    to: "prime"
+    type: "turbulent"
+    guard: "state.data.get('ready_to_proceed', False) == False"
+    priority: 2
+    max_retries: 2
+    on_traverse:
+      - action: "ask_user"
+        questions: "state.data.get('clarification_questions', [])"
+
+  # Intake -> Research
+  - id: "e_intake_research"
+    from: "intake"
+    to: "research"
+    type: "laminar"
+    guard: "state.data.get('ready_for_research', False) == True"
+    priority: 1
+
+  - id: "e_intake_clarify"
+    from: "intake"
+    to: "intake"
+    type: "turbulent"
+    guard: "state.data.get('ready_for_research', False) == False and len(state.data.get('clarifications_needed', [])) > 0"
+    priority: 2
+    max_retries: 2
+
+  # Research -> Sediment
+  - id: "e_research_sediment"
+    from: "research"
+    to: "sediment_research"
+    type: "laminar"
+    guard: "len(state.data.get('verified_facts', [])) > 0"
+    priority: 1
+
+  # Research -> Plan (skip sediment if no facts)
+  - id: "e_research_plan_direct"
+    from: "research"
+    to: "plan"
+    type: "laminar"
+    guard: "state.data.get('research_complete', False) == True and len(state.data.get('verified_facts', [])) == 0"
+    priority: 2
+
+  # Sediment -> Plan
+  - id: "e_sediment_plan"
+    from: "sediment_research"
+    to: "plan"
+    type: "laminar"
+    guard: "True"
+    priority: 1
+
+  # Plan -> Execute
+  - id: "e_plan_execute"
+    from: "plan"
+    to: "execute"
+    type: "laminar"
+    guard: "state.data.get('ready_to_execute', False) == True"
+    priority: 1
+
+  - id: "e_plan_refine"
+    from: "plan"
+    to: "plan"
+    type: "turbulent"
+    guard: "state.data.get('ready_to_execute', False) == False"
+    priority: 2
+    max_retries: 2
+
+  # Execute -> Verify
+  - id: "e_execute_verify"
+    from: "execute"
+    to: "verify"
+    type: "laminar"
+    guard: "state.data.get('execution_complete', False) == True"
+    priority: 1
+
+  # Execute loop
+  - id: "e_execute_continue"
+    from: "execute"
+    to: "execute"
+    type: "turbulent"
+    guard: "state.data.get('execution_complete', False) == False and state.data.get('step_success', True) == True"
+    priority: 2
+    max_retries: 50
+
+  # Verify -> Finalize
+  - id: "e_verify_finalize"
+    from: "verify"
+    to: "finalize"
+    type: "laminar"
+    guard: "state.data.get('verification_passed', False) == True"
+    priority: 1
+
+  # Verify -> Execute (retry)
+  - id: "e_verify_retry"
+    from: "verify"
+    to: "execute"
+    type: "turbulent"
+    guard: "state.data.get('verification_passed', False) == False"
+    priority: 2
+    max_retries: 3
+    on_traverse:
+      - action: "analyze_failure"
+      - action: "adjust_approach"
+
+  # Finalize -> Success
+  - id: "e_finalize_success"
+    from: "finalize"
+    to: "success"
+    type: "laminar"
+    guard: "state.data.get('done', False) == True"
+    priority: 1
+
+  # Global escalation
+  - id: "e_any_escalate"
+    from: "*"
+    to: "escalate"
+    type: "laminar"
+    guard: "state.data.get('needs_human', False) == True"
+    priority: 100
+
+  # ============================================
+  # DECISION NODE EDGES
+  # ============================================
+  # Decision nodes use their decision_config to route,
+  # but still need edges to define valid targets
+
+  - id: "e_decision_finalize"
+    from: "confidence_router"
+    to: "finalize"
+    type: "laminar"
+    guard: "True"
+    priority: 1
+
+  - id: "e_decision_verify"
+    from: "confidence_router"
+    to: "verify"
+    type: "laminar"
+    guard: "True"
+    priority: 2
+
+  - id: "e_decision_research"
+    from: "confidence_router"
+    to: "research"
+    type: "laminar"
+    guard: "True"
+    priority: 3
+
+  - id: "e_decision_escalate"
+    from: "confidence_router"
+    to: "escalate"
+    type: "laminar"
+    guard: "True"
+    priority: 4
+
+  # ============================================
+  # DECOMPOSES_INTO EDGES (Goal -> Task chunking)
+  # ============================================
+  # These edges break a big Goal into smaller Tasks
+  # Enforces "Chunking" (3-4 item groups) to keep LLM focused
+
+  - id: "e_decompose_plan_to_tasks"
+    from: "plan"
+    to: "execute"
+    type: "decomposes"
+    guard: "len(state.data.get('execution_plan', [])) > 0"
+    priority: 1
+    decomposition_config:
+      parent_id: "main_goal"
+      decomposition_type: "sequential"
+      max_children: 4
+      require_all_children: true
+
+  # ============================================
+  # DEPENDS_ON EDGES (Blocking dependencies)
+  # ============================================
+  # These edges physically block target node until source completes
+  # Prevents the agent from skipping steps
+
+  - id: "e_execute_depends_research"
+    from: "research"
+    to: "execute"
+    type: "depends"
+    guard: "state.data.get('research_complete', False) == True"
+    priority: 1
+    dependency_config:
+      required_nodes:
+        - "research"
+        - "plan"
+      require_all: true
+      required_state:
+        research_complete: true
+        ready_to_execute: true
+
+# ============================================
+# RELATIONSHIPS
+# ============================================
+relationships:
+  - id: "rel_research_plan"
+    from: "research"
+    to: "plan"
+    type: "informs"
+    weight: 1.0
+    observations: []
+
+  - id: "rel_facts_execution"
+    from: "verified_facts"
+    to: "execution"
+    type: "grounds"
+    weight: 1.0
+    observations: []
+
+  - id: "rel_verify_quality"
+    from: "verify_failure"
+    to: "plan_quality"
+    type: "indicates"
+    weight: 0.5
+    observations: []
