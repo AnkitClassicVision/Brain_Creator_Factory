@@ -1,0 +1,23 @@
+# Skills Index for phone_to_present_cc Brain
+# Auto-discovered skills are registered here
+
+skills: []
+# Example skill registration:
+# - name: "web_fetch"
+#   source: "builtin"
+#   description: "Fetch and parse web content"
+#   required: false
+# - name: "marp_render"
+#   source: "builtin"
+#   description: "Render Marp markdown to HTML/PPTX"
+#   required: false
+# - name: "render_verify"
+#   source: "custom"
+#   path: "skills/render_verify.py"
+#   description: "Verify rendered presentation quality"
+#   required: false
+
+auto_discover: true
+discovery_paths:
+  - "skills/"
+  - "../shared_skills/"
