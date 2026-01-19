@@ -1,0 +1,62 @@
+{
+  "client": {
+    "client_name": "Multi-Location Test",
+    "client_tagline": "",
+    "website_url": "",
+    "specialty": "Test",
+    "timezone": "America/New_York"
+  },
+  "confirmations": {
+    "timezone": "confirmed",
+    "business_hours": "confirmed",
+    "disposition_mapping": "confirmed",
+    "closures": "confirmed",
+    "location_schedules": "confirmed"
+  },
+  "business_hours": {
+    "Mon": ["08:00", "17:00"],
+    "Tue": ["08:00", "17:00"],
+    "Wed": ["08:00", "17:00"],
+    "Thu": ["08:00", "17:00"],
+    "Fri": ["08:00", "17:00"],
+    "Sat": null,
+    "Sun": null
+  },
+  "assumptions": {
+    "notes": "Synthetic multi-location fixture for validating location_mode=by_location, per-location overrides, and closure-day handling.",
+    "conversion_pct": 15,
+    "appt_seeking_pct": 60,
+    "new_patient_pct": 35,
+    "avg_appt_value": 500,
+    "rhc_growth_addon_weekly": 500,
+    "shrinkage_pct": 20
+  },
+  "analysis": {
+    "location_mode": "by_location",
+    "require_confirmed_metadata": true,
+    "require_disposition_mapping_confirmation": true,
+    "target_coverage": 0.9,
+    "num_simulations": 300,
+    "mc_duration_model": "exponential",
+    "min_calls_for_worst_window": 1,
+    "business_hours_range_display": [8, 18],
+    "aht_min_minutes": 3.5,
+    "fte_reconcile_tolerance": 1.0
+  },
+  "location_overrides": {
+    "West Clinic": {
+      "timezone": "America/Chicago",
+      "business_hours": {
+        "Mon": ["09:00", "18:00"],
+        "Tue": ["09:00", "18:00"],
+        "Wed": ["09:00", "18:00"],
+        "Thu": ["09:00", "18:00"],
+        "Fri": ["09:00", "18:00"],
+        "Sat": null,
+        "Sun": null
+      },
+      "closures": ["2025-01-07"]
+    }
+  },
+  "closures": []
+}

@@ -1,0 +1,403 @@
+state:
+  brain_id: "website-transition-codex-001"
+  run_id: "<generated at runtime>"
+  started_at: null
+  completed_at: null
+
+  # Current position in graph
+  current_node: null
+  stage: "not_started"
+
+  # User input
+  user_request: ""
+
+  # ═══════════════════════════════════════════════════════════════════
+  # WORKING DATA
+  # ═══════════════════════════════════════════════════════════════════
+  data:
+    # Workflow flags
+    workflow_started: false
+    ready_for_keyword_research: false
+
+    # Project context
+    project:
+      client_name: null
+      business_type: null
+      primary_city_region: null
+      service_area: []
+      current_domain: null
+      current_platform: "WordPress"
+      current_hosting: null
+      cms_needed: null
+      cms_choice: null
+      launch_scope:
+        content_parity_first: true
+        excluded_pages: []
+        notes: ""
+      stakeholders: []
+      dns:
+        provider: null
+        access_confirmed: null
+        cutover_window: null
+      access:
+        wordpress_admin: null
+        gsc:
+          available: null
+          property: null
+          exports_paths: []
+        ga4:
+          available: null
+          exports_paths: []
+        backlinks:
+          available: null
+          provider: null
+          exports_paths: []
+        crawl_exports_paths: []
+
+      target_stack:
+        framework: "Next.js"
+        hosting: "Vercel"
+        repo_url: null
+        vercel_project: null
+        staging_url: null
+        production_url: null
+
+    # Phase tracking
+    phase_status:
+      keyword_research: "not_started"
+      url_mapping: "not_started"
+      redirect_planning: "not_started"
+      build: "not_started"
+      technical_seo: "not_started"
+      performance_cwv: "not_started"
+      qa: "not_started"
+      launch: "not_started"
+      post_launch: "not_started"
+
+    # Deliverable registry (paths are populated during execution)
+    deliverables:
+      keyword_universe_csv: null
+      keyword_page_map_csv: null
+      current_url_inventory_csv: null
+      master_url_sheet_csv: null
+      redirect_map_csv: null
+      redirects_config_json: null
+      sitemap_plan_csv: null
+      robots_and_sitemaps_json: null
+      technical_seo_audit_json: null
+      cwv_report_json: null
+      qa_crawl_report_json: null
+      launch_runbook_md: null
+      post_launch_monitoring_md: null
+
+    # ═══════════════════════════════════════════════════════════════════
+    # PHASE 1: KEYWORD RESEARCH
+    # ═══════════════════════════════════════════════════════════════════
+    keyword_research:
+      complete: false
+      summary: ""
+      artifacts:
+        keyword_universe_path: null
+        keyword_page_map_path: null
+      inputs:
+        top_services: []
+        primary_conversions: []
+        priority_pages_known: []
+      outputs:
+        keyword_buckets: []
+        clusters: []
+        competitor_notes: []
+        page_map: []
+        priorities: []
+      missing_inputs: []
+      risks: []
+      next_steps: []
+
+    # ═══════════════════════════════════════════════════════════════════
+    # PHASE 2: URL MAPPING
+    # ═══════════════════════════════════════════════════════════════════
+    url_mapping:
+      complete: false
+      summary: ""
+      artifacts:
+        current_url_inventory_path: null
+        master_url_sheet_path: null
+        gsc_exports_paths: []
+        backlink_exports_paths: []
+      inputs:
+        crawl_tool: null
+        crawl_scope_notes: ""
+        gsc_exports_received: false
+        backlink_exports_received: false
+      outputs:
+        url_counts:
+          total: 0
+          indexable: 0
+          non_indexable: 0
+          redirects: 0
+          errors_4xx: 0
+          errors_5xx: 0
+        priority_legacy_urls: []
+        ghost_url_candidates: []
+        media_url_risk_notes: []
+      missing_inputs: []
+      risks: []
+      next_steps: []
+
+    # ═══════════════════════════════════════════════════════════════════
+    # PHASE 3: REDIRECT PLANNING
+    # ═══════════════════════════════════════════════════════════════════
+    redirect_planning:
+      complete: false
+      summary: ""
+      artifacts:
+        redirect_map_path: null
+        redirects_config_path: null
+        sitemap_plan_path: null
+      decisions:
+        url_policy: "preserve_where_possible"
+        default_status_code: 301
+        trailing_slash_policy: "preserve"
+        query_string_policy: "preserve_where_relevant"
+        ghost_url_policy:
+          tag_archives: "noindex_or_redirect"
+          author_archives: "noindex_or_redirect"
+          date_archives: "noindex_or_redirect"
+          attachment_pages: "redirect_or_remove"
+          search_pages: "noindex"
+        media_strategy:
+          preserve_wp_upload_paths: null
+          redirect_wp_uploads: null
+      outputs:
+        redirect_rules: []
+        consolidation_notes: []
+        removal_notes: []
+        redirect_test_set: []
+      missing_inputs: []
+      risks: []
+      next_steps: []
+
+    # ═══════════════════════════════════════════════════════════════════
+    # PHASE 4: BUILD
+    # ═══════════════════════════════════════════════════════════════════
+    build:
+      complete: false
+      summary: ""
+      artifacts:
+        repo_url: null
+        vercel_project: null
+        staging_url: null
+      decisions:
+        branch_strategy:
+          main: "production"
+          staging: "preprod"
+        content_system: null
+        staging_indexing_policy: "noindex,nofollow"
+        production_indexing_policy: "index,follow"
+      outputs:
+        parity_check:
+          missing_pages: []
+          missing_assets: []
+        routing_notes: []
+      missing_inputs: []
+      risks: []
+      next_steps: []
+
+    # ═══════════════════════════════════════════════════════════════════
+    # PHASE 5: TECHNICAL SEO
+    # ═══════════════════════════════════════════════════════════════════
+    technical_seo:
+      complete: false
+      summary: ""
+      artifacts:
+        technical_seo_audit_path: null
+        robots_and_sitemaps_path: null
+      outputs:
+        titles_ok: null
+        h1_ok: null
+        canonicals_ok: null
+        schema_ok: null
+        robots_ok: null
+        sitemap_ok: null
+        schema_validation_errors: []
+        canonical_issues: []
+        metadata_issues: []
+        local_seo_notes: []
+      missing_inputs: []
+      risks: []
+      next_steps: []
+
+    # ═══════════════════════════════════════════════════════════════════
+    # PHASE 6: PERFORMANCE + CWV
+    # ═══════════════════════════════════════════════════════════════════
+    performance_cwv:
+      complete: false
+      summary: ""
+      artifacts:
+        cwv_report_path: null
+      targets:
+        lcp_seconds: 2.5
+        inp_ms: 200
+        cls: 0.1
+      budgets:
+        js_initial_kb: null
+        font_families_max: 1
+        third_party_scripts_max: null
+        image_formats: ["AVIF", "WebP"]
+      outputs:
+        baseline:
+          psi_mobile: null
+          psi_desktop: null
+          lighthouse: null
+          gsc_field_data: null
+        perf_risks: []
+        third_party_scripts: []
+      missing_inputs: []
+      risks: []
+      next_steps: []
+
+    # ═══════════════════════════════════════════════════════════════════
+    # PHASE 7: QA
+    # ═══════════════════════════════════════════════════════════════════
+    qa:
+      complete: false
+      pass: false
+      summary: ""
+      artifacts:
+        qa_crawl_report_path: null
+      outputs:
+        crawl:
+          broken_links: []
+          redirect_chains: []
+          canonical_issues: []
+          schema_errors: []
+          unexpected_indexing: []
+        redirects:
+          tested_urls: []
+          failures: []
+        tracking:
+          ga4_verified: false
+          conversions_verified: false
+          gsc_ready: false
+          nap_consistency_reviewed: false
+        media:
+          broken_media_urls: []
+      missing_inputs: []
+      risks: []
+      next_steps: []
+
+    # ═══════════════════════════════════════════════════════════════════
+    # PHASE 8: LAUNCH
+    # ═══════════════════════════════════════════════════════════════════
+    launch:
+      complete: false
+      summary: ""
+      artifacts:
+        launch_runbook_path: null
+      outputs:
+        wp_content_frozen: false
+        redirects_deployed: false
+        dns_cutover_completed: false
+        smoke_tests:
+          homepage_ok: false
+          money_pages_ok: false
+          legacy_redirects_ok: false
+          notes: []
+        gsc_sitemap_submitted: false
+        monitoring_enabled: false
+        rollback_plan:
+          exists: false
+          steps: []
+      missing_inputs: []
+      risks: []
+      next_steps: []
+
+    # ═══════════════════════════════════════════════════════════════════
+    # PHASE 9: POST-LAUNCH
+    # ═══════════════════════════════════════════════════════════════════
+    post_launch:
+      complete: false
+      summary: ""
+      artifacts:
+        post_launch_monitoring_path: null
+      outputs:
+        monitoring:
+          coverage_errors: []
+          crawl_errors: []
+          redirect_misses: []
+          ranking_watchlist: []
+          cwv_field_groups: []
+        fixes_applied: []
+        iteration_backlog: []
+        internal_linking_upgrades: []
+        new_pages_pipeline: []
+      missing_inputs: []
+      risks: []
+      next_steps: []
+
+    # Error handling / escalation
+    critical_error: false
+    failure_reason: null
+    escalation_reason: null
+    needs_human: false
+
+  # ═══════════════════════════════════════════════════════════════════
+  # COUNTERS
+  # ═══════════════════════════════════════════════════════════════════
+  counters:
+    total_steps: 0
+    node_visits: {}           # {node_id: count}
+    retries: {}               # {edge_id: count}
+    total_retries: 0
+    phase_durations: {}       # {phase: seconds}
+
+  # ═══════════════════════════════════════════════════════════════════
+  # PARALLEL TASK TRACKING
+  # ═══════════════════════════════════════════════════════════════════
+  parallel:
+    active_tasks: []
+    completed_tasks: []
+    failed_tasks: []
+
+  # ═══════════════════════════════════════════════════════════════════
+  # AUDIT TRAIL
+  # ═══════════════════════════════════════════════════════════════════
+  audit: []
+  # Each entry:
+  # - timestamp
+  # - node_id
+  # - action
+  # - input_hash
+  # - output_hash
+  # - duration_ms
+
+  # ═══════════════════════════════════════════════════════════════════
+  # LEARNING SIGNALS
+  # ═══════════════════════════════════════════════════════════════════
+  signals:
+    successes: []
+    failures: []
+    improvements: []
+
+# ═══════════════════════════════════════════════════════════════════
+# OUTPUT VARIABLES (optional report/runbook placeholders)
+# ═══════════════════════════════════════════════════════════════════
+migration_variables:
+  CLIENT_NAME: ""
+  BUSINESS_TYPE: ""
+  PRIMARY_CITY_REGION: ""
+  CURRENT_DOMAIN: ""
+  TARGET_STACK: ""
+  CMS_CHOICE: ""
+  STAGING_URL: ""
+  PRODUCTION_URL: ""
+  KEYWORD_UNIVERSE_PATH: ""
+  KEYWORD_PAGE_MAP_PATH: ""
+  MASTER_URL_SHEET_PATH: ""
+  REDIRECT_MAP_PATH: ""
+  REDIRECTS_CONFIG_PATH: ""
+  TECHNICAL_SEO_AUDIT_PATH: ""
+  CWV_REPORT_PATH: ""
+  QA_CRAWL_REPORT_PATH: ""
+  LAUNCH_RUNBOOK_PATH: ""
+  POST_LAUNCH_MONITORING_PATH: ""

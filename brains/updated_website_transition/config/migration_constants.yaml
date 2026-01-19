@@ -1,0 +1,297 @@
+# ═══════════════════════════════════════════════════════════════════════════════
+# WEBSITE MIGRATION BUSINESS CONSTANTS
+# ═══════════════════════════════════════════════════════════════════════════════
+# These values are HARD LIMITS - the brain MUST respect them.
+# Update these based on specific site requirements before running.
+
+# ─────────────────────────────────────────────────────────────────────────────
+# THRESHOLDS - Validation and sanity check limits
+# ─────────────────────────────────────────────────────────────────────────────
+
+thresholds:
+  # Minimum acceptable values (below = likely error)
+  MIN_INDEXABLE_URLS: 10            # If crawl returns fewer, likely crawl failure
+  MIN_GSC_DATA_ROWS: 1              # Must have at least some traffic data
+
+  # Maximum acceptable values (above = stop and investigate)
+  MAX_REDIRECT_FAILURE_RATE: 0.10   # 10% - STOP if higher
+  MAX_BROKEN_LINKS: 5               # STOP if more than 5 broken internal links
+  MAX_REDIRECT_CHAIN_LENGTH: 1      # No chains allowed (A->B only, not A->B->C)
+  MAX_HOMEPAGE_REDIRECTS_PCT: 5     # STOP if > 5% redirect to homepage (soft-404 pattern)
+
+  # Core Web Vitals targets (Google's "good" thresholds)
+  LCP_TARGET_SECONDS: 2.5           # Largest Contentful Paint
+  INP_TARGET_MS: 200                # Interaction to Next Paint (replaced FID March 2024)
+  CLS_TARGET: 0.1                   # Cumulative Layout Shift
+
+  # CWV sanity checks (above = measurement error)
+  LCP_SANITY_MAX: 10.0              # If LCP > 10s, something's wrong with measurement
+  INP_SANITY_MAX: 1000              # If INP > 1000ms, something's wrong
+
+  # Critical item thresholds
+  HIGH_TRAFFIC_MONTHLY: 100         # URLs with > 100/month need individual testing
+  HIGH_BACKLINKS: 10                # URLs with > 10 backlinks are critical
+
+# ─────────────────────────────────────────────────────────────────────────────
+# REDIRECT RULES
+# ─────────────────────────────────────────────────────────────────────────────
+
+redirect_rules:
+  # Allowed redirect types
+  allowed_types:
+    - "301"    # Permanent redirect (most common)
+    - "308"    # Permanent redirect (preserves HTTP method)
+    - "410"    # Gone - for intentional content removal
+
+  # Forbidden patterns
+  forbidden:
+    - "302"    # Temporary - NEVER use for permanent moves
+    - "307"    # Temporary
+    - "chains" # A->B->C - always go direct to final destination
+
+  # Homepage redirect limit
+  max_homepage_redirects_pct: 5
+
+# ─────────────────────────────────────────────────────────────────────────────
+# WORDPRESS GHOST URLs - Default handling
+# ─────────────────────────────────────────────────────────────────────────────
+
+wordpress_archives:
+  # These URL types often need special handling
+  tag_archives:
+    default_action: "noindex"
+    check_traffic: true
+    # If traffic > 0, review before removing
+
+  author_archives:
+    default_action: "redirect_to_about"
+    check_traffic: true
+
+  date_archives:
+    default_action: "noindex"
+    check_traffic: true
+
+  attachment_pages:
+    default_action: "redirect_to_post"
+    check_traffic: true
+
+  search_pages:
+    default_action: "noindex"
+    check_traffic: false
+
+# ─────────────────────────────────────────────────────────────────────────────
+# SCHEMA REQUIREMENTS - Structured data for local business
+# ─────────────────────────────────────────────────────────────────────────────
+
+schema_requirements:
+  # Site-wide (required)
+  site_wide:
+    - type: "LocalBusiness"
+      required: true
+      alternative: "Organization"
+    - type: "WebSite"
+      required: true
+      with_search_action: "optional"
+    - type: "BreadcrumbList"
+      required: true
+
+  # Page-level (conditional)
+  page_level:
+    - type: "Service"
+      applies_to: "service_pages"
+      required: true
+    - type: "FAQPage"
+      applies_to: "faq_content"
+      required: "only_if_visible"
+      note: "Only add if FAQs are visible on page"
+
+  # Forbidden patterns
+  forbidden:
+    - "fake_aggregate_ratings"
+    - "hidden_faq_schema"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# REQUIRED OUTPUTS - Files that MUST be generated
+# ─────────────────────────────────────────────────────────────────────────────
+
+required_outputs:
+  # Phase 1
+  - file: "keyword_universe.yaml"
+    phase: 1
+    validation:
+      - "yaml_valid"
+      - "min_4_clusters"
+
+  - file: "page_map.csv"
+    phase: 1
+    validation:
+      - "csv_valid"
+      - "all_columns_present"
+
+  # Phase 2
+  - file: "master_url_sheet.csv"
+    phase: 2
+    columns:
+      - "old_url"
+      - "type"
+      - "traffic"
+      - "backlinks"
+      - "primary_query"
+      - "new_url"
+      - "action"
+      - "redirect_type"
+      - "notes"
+    validation:
+      - "csv_valid"
+      - "no_empty_action_column"
+      - "valid_action_values"
+
+  # Phase 3
+  - file: "redirect_map.json"
+    phase: 3
+    validation:
+      - "json_valid"
+      - "all_destinations_exist"
+      - "no_chains"
+      - "homepage_pct_check"
+
+  # Phase 5
+  - file: "sitemap.xml"
+    phase: 5
+    validation:
+      - "xml_valid"
+      - "urls_return_200"
+      - "no_staging_urls"
+
+  # Phase 8
+  - file: "rollback_plan.md"
+    phase: 8
+    validation:
+      - "not_empty"
+      - "has_dns_revert_steps"
+      - "has_wp_restore_steps"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# CRITICAL PAGES - Extra validation required
+# ─────────────────────────────────────────────────────────────────────────────
+
+critical_pages:
+  - id: "homepage"
+    path: "/"
+    tests:
+      - "redirect_test"
+      - "visual_verification"
+      - "schema_validation"
+      - "cwv_check"
+      - "tracking_check"
+
+  - id: "contact"
+    path: "/contact"
+    tests:
+      - "redirect_test"
+      - "form_functionality"
+      - "tracking_check"
+      - "call_tracking"
+
+  - id: "service_pages"
+    selector: "top_5_by_traffic"
+    tests:
+      - "redirect_test"
+      - "visual_verification"
+      - "schema_validation"
+      - "content_parity"
+
+  - id: "location_pages"
+    selector: "all_location_pages"
+    tests:
+      - "redirect_test"
+      - "schema_validation"
+      - "nap_consistency"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# QA CHECKLIST ITEMS - All mandatory
+# ─────────────────────────────────────────────────────────────────────────────
+
+qa_checklist:
+  seo:
+    - id: "crawl_staging"
+      description: "Crawl staging site with Screaming Frog or equivalent"
+      checks:
+        - "no_broken_internal_links"
+        - "all_pages_have_canonical"
+        - "all_pages_have_title"
+        - "all_pages_have_h1"
+
+    - id: "schema_validation"
+      description: "Validate structured data"
+      tool: "Google Rich Results Test"
+      must_pass: true
+
+    - id: "sitemap_check"
+      description: "Verify sitemap"
+      checks:
+        - "exists"
+        - "xml_valid"
+        - "all_urls_return_200"
+        - "count_matches_indexable_pages"
+
+    - id: "robots_check"
+      description: "Verify robots.txt"
+      checks:
+        - "staging_blocked"
+        - "production_allowed"
+
+  redirects:
+    - id: "bulk_redirect_test"
+      description: "Test all redirects"
+      checks:
+        - "301_or_308"
+        - "no_chains"
+        - "destinations_return_200"
+
+    - id: "high_traffic_individual_test"
+      description: "Individual test for high-traffic URLs"
+      threshold: "HIGH_TRAFFIC_MONTHLY"
+      must_pass: true
+
+  tracking:
+    - id: "ga4_check"
+      description: "Verify GA4 tracking"
+      checks:
+        - "pageview_fires"
+        - "events_fire"
+
+    - id: "conversion_check"
+      description: "Verify conversion tracking"
+      checks:
+        - "form_submissions"
+        - "call_clicks"
+        - "booking_clicks"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# MONITORING - Post-launch tracking
+# ─────────────────────────────────────────────────────────────────────────────
+
+monitoring:
+  duration_days: 7
+  metrics:
+    - "gsc_crawl_errors"
+    - "gsc_index_coverage"
+    - "gsc_cwv_report"
+    - "rankings_priority_keywords"
+
+  alert_thresholds:
+    crawl_errors: 10
+    index_drop_pct: 10
+    ranking_drop_positions: 10
+
+# ─────────────────────────────────────────────────────────────────────────────
+# ACTION VALUES - Valid values for Master URL Sheet
+# ─────────────────────────────────────────────────────────────────────────────
+
+valid_actions:
+  - "Keep"          # Same URL structure, migrate content
+  - "Redirect"      # Redirect to new URL
+  - "Consolidate"   # Merge into another page
+  - "Remove"        # Delete with 410 or redirect to related
+  - "Noindex"       # Keep but noindex (for archives)

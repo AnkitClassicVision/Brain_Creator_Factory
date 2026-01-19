@@ -1,0 +1,134 @@
+# Pricing Constants - Phone to Present Workflow
+# DO NOT MODIFY without approval
+# Based on Casey Optical Too workflow errors - these prevent Error 4 & 5
+
+# ═══════════════════════════════════════════════════════════════════
+# PRICING MINIMUMS (Error 4 Prevention)
+# ═══════════════════════════════════════════════════════════════════
+pricing:
+  minimums:
+    PILOT_WEEKLY_MIN: 600          # $600/week minimum for pilot
+    INBOUND_WEEKLY_MIN: 480        # $480/week minimum (1 FTE)
+    RHC_WEEKLY_MIN: 480            # $480/week minimum (1 FTE)
+    RHC_GROWTH_WEEKLY_MIN: 980     # $480 + $500 add-on minimum
+    HIRE_WEEKLY_MIN: 960           # $960/week minimum (1 FTE)
+
+  rates:
+    MYBCAT_WEEKLY_RATE: 480        # $/week per FTE
+    MYBCAT_OT_HOURLY: 18           # $/hour overtime
+    HIRE_WEEKLY_RATE: 960          # $/week per FTE in-house
+    HIRE_OT_HOURLY: 36             # $/hour overtime in-house
+    WEEKEND_PREMIUM_PER_DAY: 25    # $/FTE per weekend day
+    RHC_GROWTH_ADDON: 500          # $/week growth add-on
+
+# ═══════════════════════════════════════════════════════════════════
+# COVERAGE MINIMUMS (Error 5 Prevention)
+# ═══════════════════════════════════════════════════════════════════
+coverage:
+  minimums:
+    WEEKLY_HOURS_MIN: 40           # Minimum weekly hours for any calculation
+    FTE_MIN: 1.0                   # Minimum FTE (1 full-time equivalent)
+    SHRINKAGE_FTE_MIN: 1.25        # Minimum shrinkage-adjusted FTE
+
+  shrinkage:
+    SHRINKAGE_PCT: 20              # 20% shrinkage for breaks/PTO/training
+    SHRINK_FACTOR: 0.80            # 1 - (SHRINKAGE_PCT / 100)
+
+# ═══════════════════════════════════════════════════════════════════
+# MONTE CARLO / FTE RECONCILIATION
+# ═══════════════════════════════════════════════════════════════════
+monte_carlo:
+  NUM_SIMULATIONS: 1000
+  TARGET_COVERAGE: 0.90
+  FTE_RECONCILIATION_TOLERANCE: 1.0  # Max allowed diff between CDF and MC
+
+# ═══════════════════════════════════════════════════════════════════
+# DATA QUALITY THRESHOLDS
+# ═══════════════════════════════════════════════════════════════════
+data_quality:
+  DISPOSITION_UNKNOWN_MAX_PCT: 10   # STOP if unknown dispositions > 10%
+  DIRECTION_UNKNOWN_MAX_PCT: 5      # Warn if unknown direction > 5%
+
+# ═══════════════════════════════════════════════════════════════════
+# CHART REQUIREMENTS (Error 6 Prevention)
+# ═══════════════════════════════════════════════════════════════════
+charts:
+  required:
+    - "miss_distribution.png"
+    - "daily_volume.png"
+    - "hourly_volume.png"
+    - "heatmap.png"
+    - "concurrency_cdf.png"
+    - "grade_badge.png"
+
+  dimensions:
+    width: 1000
+    height: 700
+
+  min_file_size_bytes: 1000        # Charts smaller than this are likely empty
+
+# ═══════════════════════════════════════════════════════════════════
+# CRITICAL SLIDES (Error 7 Prevention)
+# ═══════════════════════════════════════════════════════════════════
+critical_slides:
+  - slide: 1
+    name: "Title"
+    required_placeholders:
+      - "{{CLIENT_NAME}}"
+      - "{{WEBSITE_URL}}"
+      - "{{SPECIALTY}}"
+
+  - slide: 5
+    name: "Primary KPIs"
+    required_placeholders:
+      - "{{ANSWER_RATE}}"
+      - "{{MISS_RATE}}"
+      - "{{GRADE}}"
+    validation:
+      - "ANSWER_RATE is percentage"
+      - "MISS_RATE is percentage"
+      - "GRADE is A/B/C/D/F"
+
+  - slide: 8
+    name: "Process vs Capacity"
+    required_placeholders:
+      - "{{PROCESS_MISS_PCT}}"
+      - "{{CAPACITY_MISS_PCT}}"
+    required_images:
+      - "charts/miss_distribution.png"
+
+  - slide: 18
+    name: "Paths Forward"
+    required_structure: "v4 HTML pf-table"
+    forbidden: "markdown table"
+    required_classes:
+      - "pf-table"
+      - "pf-container"
+      - "pf-icon-check"
+      - "pf-icon-warn"
+      - "pf-icon-x"
+      - "pf-rhc"
+      - "pf-badge"
+
+# ═══════════════════════════════════════════════════════════════════
+# TEMPLATE REQUIREMENTS (Error 1 & 2 Prevention)
+# ═══════════════════════════════════════════════════════════════════
+template:
+  required_file: "templates/presentation_template.md"
+  reference_file: "references/slide18_paths_forward_v4.md"
+
+  # v4 HTML classes that MUST be present (Error 2 prevention)
+  required_classes:
+    - "pf-table"
+    - "pf-container"
+    - "pf-icon-check"
+    - "pf-icon-warn"
+    - "pf-icon-x"
+    - "pf-rhc"
+    - "pf-badge"
+
+  # Patterns that indicate WRONG structure (markdown table)
+  forbidden_patterns:
+    - "| Feature |"
+    - "|---|"
+    - "| --- |"

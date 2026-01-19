@@ -1,14 +1,114 @@
 # Universal Brain Template
 # A complete, runnable brain workflow template
+# INCLUDES: Pre-flight Phase (REQUIRED for all brains)
 
 graph:
   name: "{{brain_name}}"
   version: "1.0.0"
 
-start_node: "prime"
-terminal_nodes: ["success", "failure", "escalate"]
+# CRITICAL: Start with pre-flight validation, not main workflow
+start_node: "preflight_check"
+terminal_nodes: ["success", "failure", "escalate", "preflight_blocked"]
 
 nodes:
+  # ════════════════════════════════════════════════════════════════════
+  # PHASE 0: PRE-FLIGHT VALIDATION (REQUIRED)
+  # Runs BEFORE main workflow to prevent LLM improvisation
+  # ════════════════════════════════════════════════════════════════════
+
+  # Check that required templates/references exist
+  - id: "preflight_check"
+    type: "gate"
+    stage: "preflight"
+    purpose: "Verify all required templates and references exist"
+    gate_config:
+      criteria:
+        - name: "templates_exist"
+          check: "all required templates exist on filesystem"
+        - name: "references_exist"
+          check: "all required references exist on filesystem"
+      on_pass: "preflight_validate"
+      on_fail: "preflight_missing"
+
+  # Validate structure of templates/references
+  - id: "preflight_validate"
+    type: "gate"
+    stage: "preflight"
+    purpose: "Verify templates match required specification"
+    gate_config:
+      criteria:
+        - name: "template_structure"
+          check: "template contains required elements/patterns"
+        - name: "no_forbidden_patterns"
+          check: "template does not contain forbidden patterns"
+      on_pass: "preflight_config"
+      on_fail: "preflight_invalid"
+
+  # Load and validate business constants
+  - id: "preflight_config"
+    type: "tributary"
+    stage: "preflight"
+    purpose: "Load business constants and validate completeness"
+    skill: "file_read"
+    parameters:
+      path: "config/{{brain_name}}_constants.yaml"
+    state_writes:
+      - path: "config"
+        from: "output"
+      - path: "config_loaded"
+        value: true
+
+  # Pre-flight gate - all checks must pass
+  - id: "preflight_gate"
+    type: "gate"
+    stage: "preflight"
+    purpose: "Final pre-flight validation before main workflow"
+    gate_config:
+      criteria:
+        - name: "all_preflight_passed"
+          check: "state.preflight.all_valid == true"
+        - name: "config_loaded"
+          check: "state.config_loaded == true"
+      on_pass: "prime"
+      on_fail: "preflight_blocked"
+
+  # Terminal: Missing dependencies - DO NOT proceed
+  - id: "preflight_missing"
+    type: "terminal"
+    stage: "preflight"
+    purpose: "STOP - Required dependencies missing"
+    terminal_config:
+      outcome: "blocked"
+      reason: "missing_dependencies"
+      message: "Required templates or references are missing. DO NOT proceed without them. DO NOT generate from scratch."
+      action: "ask_user"
+
+  # Terminal: Invalid structure - DO NOT proceed
+  - id: "preflight_invalid"
+    type: "terminal"
+    stage: "preflight"
+    purpose: "STOP - Template/reference structure invalid"
+    terminal_config:
+      outcome: "blocked"
+      reason: "invalid_structure"
+      message: "Template does not match required specification. DO NOT use wrong structure. DO NOT simplify format."
+      action: "ask_user"
+
+  # Terminal: Pre-flight blocked - DO NOT proceed
+  - id: "preflight_blocked"
+    type: "terminal"
+    stage: "preflight"
+    purpose: "STOP - Pre-flight validation failed"
+    terminal_config:
+      outcome: "blocked"
+      reason: "preflight_failed"
+      message: "Pre-flight validation failed. Review and fix before proceeding. DO NOT improvise."
+      action: "ask_user"
+
+  # ════════════════════════════════════════════════════════════════════
+  # MAIN WORKFLOW (starts after pre-flight passes)
+  # ════════════════════════════════════════════════════════════════════
+
   # ============================================
   # PRIME - Initialize the workflow
   # ============================================
@@ -552,6 +652,63 @@ nodes:
 # EDGES
 # ============================================
 edges:
+  # ════════════════════════════════════════════════════════════════════
+  # PRE-FLIGHT EDGES (REQUIRED)
+  # ════════════════════════════════════════════════════════════════════
+
+  - id: "e_preflight_check_validate"
+    from: "preflight_check"
+    to: "preflight_validate"
+    type: "laminar"
+    guard: "state.preflight.dependencies_exist == true"
+    priority: 1
+
+  - id: "e_preflight_check_missing"
+    from: "preflight_check"
+    to: "preflight_missing"
+    type: "laminar"
+    guard: "state.preflight.dependencies_exist == false"
+    priority: 2
+
+  - id: "e_preflight_validate_config"
+    from: "preflight_validate"
+    to: "preflight_config"
+    type: "laminar"
+    guard: "state.preflight.structure_valid == true"
+    priority: 1
+
+  - id: "e_preflight_validate_invalid"
+    from: "preflight_validate"
+    to: "preflight_invalid"
+    type: "laminar"
+    guard: "state.preflight.structure_valid == false"
+    priority: 2
+
+  - id: "e_preflight_config_gate"
+    from: "preflight_config"
+    to: "preflight_gate"
+    type: "laminar"
+    guard: "state.config_loaded == true"
+    priority: 1
+
+  - id: "e_preflight_gate_prime"
+    from: "preflight_gate"
+    to: "prime"
+    type: "laminar"
+    guard: "state.preflight.all_valid == true"
+    priority: 1
+
+  - id: "e_preflight_gate_blocked"
+    from: "preflight_gate"
+    to: "preflight_blocked"
+    type: "laminar"
+    guard: "state.preflight.all_valid == false"
+    priority: 2
+
+  # ════════════════════════════════════════════════════════════════════
+  # MAIN WORKFLOW EDGES
+  # ════════════════════════════════════════════════════════════════════
+
   # Prime -> Intake
   - id: "e_prime_intake"
     from: "prime"

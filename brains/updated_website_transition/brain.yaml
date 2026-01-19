@@ -1,0 +1,273 @@
+brain:
+  id: "website-transition-001"
+  name: "updated_website_transition"
+  version: "1.0.0"
+  created_at: "2026-01-16"
+  updated_at: "2026-01-16"
+  purpose: "Migrate WordPress site to GitHub/Vercel workflow without losing SEO equity"
+
+objectives:
+  primary_goal: "Execute WordPress to Vercel migration preserving all rankings, backlinks, and traffic"
+  objectives:
+    - "Validate keyword strategy before making structural changes"
+    - "Map all existing URLs with traffic/backlinks to deliberate outcomes"
+    - "Build future-state architecture with proper redirect mapping"
+    - "Implement technical SEO (H1, schema, metadata) correctly"
+    - "Achieve Core Web Vitals targets (LCP <= 2.5s, INP <= 200ms, CLS <= 0.1)"
+    - "Deploy clean GitHub to Vercel workflow"
+    - "Complete all QA checks before launch"
+    - "Execute minimal-risk cutover with monitoring"
+  deliverables:
+    - name: "keyword_universe"
+      format: "yaml/csv"
+      description: "Complete keyword clusters with intent mapping"
+    - name: "master_url_sheet"
+      format: "csv"
+      description: "All URLs with action, redirect type, notes"
+    - name: "redirect_map"
+      format: "json"
+      description: "Complete old->new URL mapping for Vercel"
+    - name: "sitemap"
+      format: "xml"
+      description: "XML sitemap matching intended indexable pages"
+    - name: "launch_checklist"
+      format: "markdown"
+      description: "Pre-launch QA completion record"
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# CONSTRAINTS - LLM ENFORCEMENT LOGIC (CRITICAL)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+constraints:
+  # ─────────────────────────────────────────────────────────────────────────────
+  # STOP RULES - When to HALT and ask user (DO NOT proceed without user input)
+  # ─────────────────────────────────────────────────────────────────────────────
+  stop_rules:
+    # Data collection failures
+    - condition: "GSC data export returns empty or fails"
+      action: "STOP and ask user - DO NOT proceed without real traffic data"
+      reason: "Redirect priorities require actual traffic data"
+      severity: "critical"
+
+    - condition: "Crawl returns < 10 indexable URLs"
+      action: "STOP and ask user - verify crawl configuration"
+      reason: "Suspiciously small site may indicate crawl failure"
+      severity: "high"
+
+    - condition: "Backlink data unavailable and site has organic traffic"
+      action: "STOP and ask user - need backlink data for high-traffic sites"
+      reason: "Redirecting without knowing backlink targets wastes equity"
+      severity: "high"
+
+    # Completeness failures
+    - condition: "Master URL sheet has any row missing 'action' column"
+      action: "STOP and complete - every URL must have explicit outcome"
+      reason: "Incomplete mappings cause accidental 404s"
+      severity: "critical"
+
+    - condition: "Redirect map has destination URL that doesn't exist"
+      action: "STOP and verify - destination pages must exist"
+      reason: "Redirecting to 404 wastes link equity"
+      severity: "critical"
+
+    - condition: "Any URL with traffic > 100/month has no redirect mapping"
+      action: "STOP and map - high-traffic URLs are critical"
+      reason: "Losing high-traffic URL causes immediate ranking drop"
+      severity: "critical"
+
+    # Validation failures
+    - condition: "CWV baseline shows LCP > 10s or INP > 1000ms"
+      action: "STOP and verify - likely measurement error"
+      reason: "Extreme values suggest test configuration problem"
+      severity: "medium"
+
+    - condition: "Schema validation returns errors"
+      action: "STOP and fix schema - DO NOT proceed with invalid markup"
+      reason: "Invalid schema can harm SERP appearance"
+      severity: "high"
+
+    - condition: "Redirect test shows > 10% failure rate"
+      action: "STOP and fix redirects - DO NOT proceed to launch"
+      reason: "High failure rate will cause ranking drops"
+      severity: "critical"
+
+    - condition: "Staging crawl finds > 5 broken internal links"
+      action: "STOP and fix links - DO NOT proceed to launch"
+      reason: "Broken links hurt UX and crawlability"
+      severity: "high"
+
+    - condition: "> 5% of redirects point to homepage"
+      action: "STOP and review - likely soft-404 spam pattern"
+      reason: "Mass homepage redirects signal content removal to Google"
+      severity: "high"
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # MUST NOT - Forbidden actions (NEVER do these)
+  # ─────────────────────────────────────────────────────────────────────────────
+  must_not:
+    # NEVER IMPROVISE
+    - "Generate redirect mappings from scratch when data is missing - ALWAYS stop and ask"
+    - "Guess or assume traffic/backlink values - ALWAYS use real data"
+    - "Proceed with incomplete Master URL Sheet - EVERY row must be complete"
+    - "Mark a phase complete if validation fails - FIX first"
+    - "Skip pre-flight checks even if user says 'just do it'"
+
+    # REDIRECT RULES (SEO-critical)
+    - "Redirect everything to homepage (soft-404 spam pattern)"
+    - "Create redirect chains (A->B->C) - always redirect to final destination"
+    - "Use 302 for permanent moves - use 301 or 308 only"
+    - "Skip redirect testing for any URL with traffic > 100/month"
+    - "Consolidate pages with different search intents"
+
+    # OUTPUT RULES
+    - "Trust command exit code without verifying output files exist"
+    - "Assume generated files are valid without checking size > 0"
+    - "Deliver any file with unreplaced {{PLACEHOLDER}} tokens"
+    - "Skip validation of JSON/XML/YAML syntax in output files"
+
+    # LAUNCH RULES
+    - "Launch without freezing WP content changes first"
+    - "Skip any QA step - ALL QA is mandatory"
+    - "Launch without rollback plan documented"
+    - "Remove WordPress before confirming Vercel is stable"
+    - "Launch without GSC sitemap submission ready"
+
+    # DATA RULES
+    - "Delete or ignore URLs just because they have low traffic"
+    - "Assume tag/author/date archives can be removed without checking traffic"
+    - "Skip media URL (wp-content/uploads) planning"
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # MUST DO - Mandatory actions (ALWAYS do these)
+  # ─────────────────────────────────────────────────────────────────────────────
+  must_do:
+    # PRE-FLIGHT
+    - "Run pre-flight checks before starting any phase"
+    - "Verify GSC access or existing GSC export before keyword/URL work"
+    - "Load and validate config/migration_constants.yaml at startup"
+    - "Inventory all available data sources before planning"
+
+    # DATA COLLECTION
+    - "Export GSC data (clicks, impressions, queries by page)"
+    - "Crawl entire site including all WordPress archives"
+    - "Document every URL type: page, post, archive, attachment, search"
+    - "Record internal link counts for each URL"
+
+    # MAPPING
+    - "Assign explicit action to EVERY URL (Keep/Redirect/Consolidate/Remove)"
+    - "Map redirect destination for every URL being redirected"
+    - "Test redirects for all URLs with traffic > threshold"
+    - "Verify no redirect chains exist"
+
+    # TECHNICAL SEO
+    - "Verify one H1 per page matches primary intent"
+    - "Validate all schema with Google Rich Results Test"
+    - "Check canonical tags on every page"
+    - "Verify robots.txt blocks staging, allows production"
+
+    # QA (mandatory - never skip)
+    - "Crawl staging before launch"
+    - "Verify GA4/tracking fires correctly"
+    - "Test top 20 redirect URLs manually"
+    - "Check CWV on mobile for key pages"
+    - "Verify sitemap URLs match indexable pages"
+    - "Document rollback plan before launch"
+
+    # POST-LAUNCH
+    - "Monitor GSC crawl errors for 7 days"
+    - "Check index coverage changes"
+    - "Track rankings for priority keywords"
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# LEARNING CONFIGURATION
+# ═══════════════════════════════════════════════════════════════════════════════
+
+learning:
+  enabled: true
+  mode: "auto_safe"
+  auto_update:
+    edge_priorities: true
+    relationship_weights: true
+    guard_thresholds: false
+    node_prompts: false
+    add_nodes: false
+    remove_nodes: false
+    add_edges: false
+    remove_edges: false
+  requires_approval:
+    - "structural_changes"
+    - "new_skills"
+    - "constraint_changes"
+    - "stop_rule_modifications"
+  feedback_sources:
+    - "outcome"
+    - "user_feedback"
+    - "quality_scores"
+    - "cwv_metrics"
+    - "redirect_success_rate"
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# EXECUTION CONFIGURATION
+# ═══════════════════════════════════════════════════════════════════════════════
+
+execution:
+  max_steps: 200
+  max_parallel: 5
+  timeout_seconds: 7200
+  max_retries: 3
+  checkpoint_frequency: "after_each_phase"
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# SKILLS CONFIGURATION
+# ═══════════════════════════════════════════════════════════════════════════════
+
+skills:
+  available:
+    - "google-search-console"  # GSC data export
+    - "ahrefs"                 # Backlink data
+    - "dataforseo"             # SERP/keyword data
+    - "web_fetch"              # URL crawling
+    - "vercel"                 # Deployment
+    - "github-operations-manager"  # Git/GitHub
+    - "visual-verification"   # Screenshot/visual QA
+  auto_discover: true
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# CRITICAL ITEMS (require extra validation)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+critical_items:
+  url_types:
+    - name: "homepage"
+      validation: ["redirect_test", "visual_verification", "schema_check", "cwv_check"]
+    - name: "service_pages_top_5"
+      validation: ["redirect_test", "visual_verification", "schema_check"]
+    - name: "location_pages"
+      validation: ["redirect_test", "schema_check", "nap_consistency"]
+    - name: "contact_page"
+      validation: ["redirect_test", "form_test", "tracking_test"]
+    - name: "high_backlink_urls"
+      criteria: "backlinks > 10"
+      validation: ["redirect_test", "destination_quality"]
+    - name: "high_traffic_urls"
+      criteria: "monthly_traffic > 100"
+      validation: ["redirect_test", "content_parity"]
+
+  files:
+    - name: "redirect_map"
+      validation: ["json_valid", "destinations_exist", "no_chains", "no_mass_homepage"]
+    - name: "sitemap"
+      validation: ["xml_valid", "urls_return_200", "count_matches_expected"]
+    - name: "master_url_sheet"
+      validation: ["all_columns_present", "no_empty_actions", "valid_action_values"]
+
+metadata:
+  tags:
+    - "seo"
+    - "migration"
+    - "wordpress"
+    - "vercel"
+    - "local_business"
+  domain: "website_migration"
+  complexity: "high"
+  notes: "Based on website_transition_instructions.md - full SEO-safe migration workflow"

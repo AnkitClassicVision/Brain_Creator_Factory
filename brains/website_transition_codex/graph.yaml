@@ -1,0 +1,1072 @@
+graph:
+  name: "website_transition_codex"
+  version: "1.0.0"
+  description: "SEO-safe WordPress → GitHub/Vercel website migration workflow"
+
+start_node: "intake"
+terminal_nodes: ["success", "failure", "escalate"]
+
+nodes:
+  # ═══════════════════════════════════════════════════════════════════
+  # INTAKE NODE
+  # ═══════════════════════════════════════════════════════════════════
+  - id: "intake"
+    type: "prime"
+    stage: "intake"
+    purpose: "Initialize workflow when user requests a migration"
+
+    prompt: |
+      You are at the INTAKE stage of the Website Transition (SEO-Safe Migration) Pipeline.
+
+      TRIGGER: User requested a WordPress → GitHub/Vercel (Next.js/Vercel) migration, or said "start".
+
+      Your task:
+      1) Confirm the workflow is starting
+      2) Capture the minimum project context required to begin Phase 1 (Keyword Research)
+      3) Identify any immediate blockers (missing access/exports) and flag escalation if needed
+
+      Minimum inputs to request (if missing):
+      - Current domain (canonical production domain)
+      - Business one-liner + primary city/region
+      - Top services (money services) and “pages that currently drive leads”
+      - Whether non-technical staff must edit content (CMS need)
+      - Target stack preference (default: Next.js + Vercel)
+
+      Output JSON:
+      {
+        "workflow_started": true,
+        "project": {
+          "client_name": "<string or null>",
+          "business_type": "<string or null>",
+          "primary_city_region": "<string or null>",
+          "current_domain": "<string or null>",
+          "current_platform": "WordPress",
+          "target_stack": {
+            "framework": "Next.js",
+            "hosting": "Vercel"
+          },
+          "cms_needed": "<true|false|null>"
+        },
+        "ready_for_keyword_research": true,
+        "needs_human": false,
+        "escalation_reason": null
+      }
+
+    output_schema:
+      type: "object"
+      required: ["workflow_started", "project", "ready_for_keyword_research", "needs_human"]
+      properties:
+        workflow_started: { type: "boolean" }
+        project: { type: "object" }
+        ready_for_keyword_research: { type: "boolean" }
+        needs_human: { type: "boolean" }
+        escalation_reason: { type: ["string", "null"] }
+
+    state_writes:
+      - path: "workflow_started"
+        from: "output.workflow_started"
+      - path: "project"
+        from: "output.project"
+      - path: "ready_for_keyword_research"
+        from: "output.ready_for_keyword_research"
+      - path: "needs_human"
+        from: "output.needs_human"
+      - path: "escalation_reason"
+        from: "output.escalation_reason"
+
+    memory:
+      dredge: []
+      write: false
+
+    parallel:
+      spawn: false
+
+  # ═══════════════════════════════════════════════════════════════════
+  # PHASE 1: KEYWORD RESEARCH
+  # ═══════════════════════════════════════════════════════════════════
+  - id: "keyword_research"
+    type: "flow"
+    stage: "keyword_research"
+    purpose: "Validate local keyword strategy and turn it into a page map"
+
+    prompt: |
+      You are at PHASE 1 - Keyword Research (Local Business Validation).
+
+      Goal: Build a keyword universe and a keyword-to-page map so the migration protects what matters and improves structure safely.
+
+      Inputs (ask for missing):
+      - Business type + primary city/region + service area (neighborhoods/suburbs)
+      - Top services and top conversion actions (calls/forms/bookings)
+      - Current domain and any known priority pages
+      - Constraints: content parity at launch? any pages being removed?
+
+      Required work:
+      1) Build a “Keyword Universe” across buckets:
+         - service + city, near me, problem-based, price/insurance, brand/comparison, location modifiers
+      2) Competitor reality check for top services (local pack + top organic)
+      3) Cluster keywords by intent and map each cluster to a target page type:
+         - Homepage / Service / Location / Problem / FAQ / Blog (only if justified)
+      4) Produce a keyword-to-page map with priorities and launch scope
+
+      Done when:
+      - Every priority keyword cluster maps to an existing or planned page
+      - Launch scope is explicit (parity-first) and signed off
+
+      Output JSON:
+      {
+        "phase": "keyword_research",
+        "phase_status": "complete|needs_input|blocked",
+        "complete": true,
+        "summary": "<1-3 sentences>",
+        "artifacts": {
+          "keyword_universe_path": "<path or null>",
+          "keyword_page_map_path": "<path or null>"
+        },
+        "missing_inputs": [],
+        "risks": [],
+        "next_steps": ["Proceed to URL mapping"],
+        "needs_human": false,
+        "escalation_reason": null
+      }
+
+    output_schema:
+      type: "object"
+      required: ["phase", "phase_status", "complete", "summary", "artifacts", "missing_inputs", "risks", "next_steps", "needs_human"]
+      properties:
+        phase: { type: "string" }
+        phase_status: { type: "string" }
+        complete: { type: "boolean" }
+        summary: { type: "string" }
+        artifacts: { type: "object" }
+        missing_inputs: { type: "array" }
+        risks: { type: "array" }
+        next_steps: { type: "array" }
+        needs_human: { type: "boolean" }
+        escalation_reason: { type: ["string", "null"] }
+
+    state_writes:
+      - path: "phase_status.keyword_research"
+        from: "output.phase_status"
+      - path: "keyword_research.complete"
+        from: "output.complete"
+      - path: "keyword_research.summary"
+        from: "output.summary"
+      - path: "keyword_research.artifacts"
+        from: "output.artifacts"
+      - path: "keyword_research.missing_inputs"
+        from: "output.missing_inputs"
+      - path: "keyword_research.risks"
+        from: "output.risks"
+      - path: "keyword_research.next_steps"
+        from: "output.next_steps"
+      - path: "needs_human"
+        from: "output.needs_human"
+      - path: "escalation_reason"
+        from: "output.escalation_reason"
+
+  # ═══════════════════════════════════════════════════════════════════
+  # PHASE 2: URL MAPPING (CURRENT-STATE SEO + LINK MAPPING)
+  # ═══════════════════════════════════════════════════════════════════
+  - id: "url_mapping"
+    type: "flow"
+    stage: "url_mapping"
+    purpose: "Create a complete current-state URL inventory and SEO signal map"
+
+    prompt: |
+      You are at PHASE 2 - URL Mapping (Current-State SEO + Link Mapping).
+
+      Goal: Be able to answer “what happens to every URL?” before any build/launch decisions.
+
+      Required inputs/exports (ask for missing):
+      - Full crawl export (Screaming Frog or equivalent): all indexable URLs + status + canonicals + titles/H1 + internal links
+      - Google Search Console exports: top pages, top queries, external links (backlinks)
+      - Backlink exports (Ahrefs/Semrush if available)
+      - Any known “legacy URLs that must survive” (ads, QR codes, citations, PDFs)
+
+      Required work:
+      1) Build a URL inventory (including PDFs/media if significant)
+      2) Classify each URL: keep, redirect, merge, noindex, remove/410
+      3) Identify high-risk URLs: traffic, backlinks, conversions, citations
+      4) Identify WordPress “ghost URLs” and decide policy (noindex/redirect/remove)
+
+      Done when:
+      - Master URL sheet has an explicit action for every URL
+      - Priority legacy URL test set is defined (top pages + backlinks)
+
+      Output JSON:
+      {
+        "phase": "url_mapping",
+        "phase_status": "complete|needs_input|blocked",
+        "complete": true,
+        "summary": "<1-3 sentences>",
+        "artifacts": {
+          "current_url_inventory_path": "<path or null>",
+          "master_url_sheet_path": "<path or null>",
+          "gsc_exports_paths": [],
+          "backlink_exports_paths": []
+        },
+        "missing_inputs": [],
+        "risks": [],
+        "next_steps": ["Proceed to redirect planning"],
+        "needs_human": false,
+        "escalation_reason": null
+      }
+
+    output_schema:
+      type: "object"
+      required: ["phase", "phase_status", "complete", "summary", "artifacts", "missing_inputs", "risks", "next_steps", "needs_human"]
+      properties:
+        phase: { type: "string" }
+        phase_status: { type: "string" }
+        complete: { type: "boolean" }
+        summary: { type: "string" }
+        artifacts: { type: "object" }
+        missing_inputs: { type: "array" }
+        risks: { type: "array" }
+        next_steps: { type: "array" }
+        needs_human: { type: "boolean" }
+        escalation_reason: { type: ["string", "null"] }
+
+    state_writes:
+      - path: "phase_status.url_mapping"
+        from: "output.phase_status"
+      - path: "url_mapping.complete"
+        from: "output.complete"
+      - path: "url_mapping.summary"
+        from: "output.summary"
+      - path: "url_mapping.artifacts"
+        from: "output.artifacts"
+      - path: "url_mapping.missing_inputs"
+        from: "output.missing_inputs"
+      - path: "url_mapping.risks"
+        from: "output.risks"
+      - path: "url_mapping.next_steps"
+        from: "output.next_steps"
+      - path: "needs_human"
+        from: "output.needs_human"
+      - path: "escalation_reason"
+        from: "output.escalation_reason"
+
+  # ═══════════════════════════════════════════════════════════════════
+  # PHASE 3: REDIRECT PLANNING (FUTURE-STATE ARCHITECTURE)
+  # ═══════════════════════════════════════════════════════════════════
+  - id: "redirect_planning"
+    type: "flow"
+    stage: "redirect_planning"
+    purpose: "Define future architecture and produce a complete redirect map"
+
+    prompt: |
+      You are at PHASE 3 - Redirect Planning (Future-State Architecture).
+
+      Goal: Preserve equity first (URLs + backlinks), then improve structure safely.
+
+      Required inputs (from earlier phases):
+      - Keyword page map (intent-driven)
+      - Master URL sheet (every URL has an action)
+
+      Required work:
+      1) Lock URL policy: keep same URLs whenever possible (especially money pages).
+      2) Design future sitemap/IA aligned to intent; consolidate only when intent matches.
+      3) Produce redirect map (old → new) with:
+         - one-to-one targets where possible
+         - correct status codes (301/308)
+         - no redirect chains, loops, or blanket homepage redirects
+      4) Decide policy for:
+         - WordPress ghost URLs (tags/authors/dates/attachments/search)
+         - media URLs (/wp-content/uploads/...) preservation vs redirects
+      5) Produce a machine-friendly redirects config (Vercel/Next.js) derived from redirect map.
+
+      Done when:
+      - Redirect map is complete + reviewed
+      - A conversion-ready top-URL redirect test set exists (top ~20-50 legacy URLs)
+
+      Output JSON:
+      {
+        "phase": "redirect_planning",
+        "phase_status": "complete|needs_input|blocked",
+        "complete": true,
+        "summary": "<1-3 sentences>",
+        "artifacts": {
+          "redirect_map_path": "<path or null>",
+          "redirects_config_path": "<path or null>",
+          "sitemap_plan_path": "<path or null>"
+        },
+        "missing_inputs": [],
+        "risks": [],
+        "next_steps": ["Proceed to build"],
+        "needs_human": false,
+        "escalation_reason": null
+      }
+
+    output_schema:
+      type: "object"
+      required: ["phase", "phase_status", "complete", "summary", "artifacts", "missing_inputs", "risks", "next_steps", "needs_human"]
+      properties:
+        phase: { type: "string" }
+        phase_status: { type: "string" }
+        complete: { type: "boolean" }
+        summary: { type: "string" }
+        artifacts: { type: "object" }
+        missing_inputs: { type: "array" }
+        risks: { type: "array" }
+        next_steps: { type: "array" }
+        needs_human: { type: "boolean" }
+        escalation_reason: { type: ["string", "null"] }
+
+    state_writes:
+      - path: "phase_status.redirect_planning"
+        from: "output.phase_status"
+      - path: "redirect_planning.complete"
+        from: "output.complete"
+      - path: "redirect_planning.summary"
+        from: "output.summary"
+      - path: "redirect_planning.artifacts"
+        from: "output.artifacts"
+      - path: "redirect_planning.missing_inputs"
+        from: "output.missing_inputs"
+      - path: "redirect_planning.risks"
+        from: "output.risks"
+      - path: "redirect_planning.next_steps"
+        from: "output.next_steps"
+      - path: "needs_human"
+        from: "output.needs_human"
+      - path: "escalation_reason"
+        from: "output.escalation_reason"
+
+  # ═══════════════════════════════════════════════════════════════════
+  # PHASE 4: BUILD (GITHUB → VERCEL)
+  # ═══════════════════════════════════════════════════════════════════
+  - id: "build"
+    type: "flow"
+    stage: "build"
+    purpose: "Rebuild the site on Next.js with a staging deploy that matches planned structure"
+
+    prompt: |
+      You are at PHASE 4 - Build (GitHub → Vercel).
+
+      Goal: Produce a staging deployment that matches the planned structure and preserves URL routing.
+
+      Required inputs (ask for missing):
+      - Redirect plan outputs (redirect map + config format)
+      - Content workflow choice (MDX, Git-backed CMS, headless CMS)
+      - Content parity scope for launch (pages/assets required at day 0)
+
+      Required work:
+      1) Create/confirm repo structure and branch strategy (main/staging + preview deploys).
+      2) Implement routing to preserve existing URLs where possible.
+      3) Implement content system and migrate content with parity-first scope.
+      4) Configure environments:
+         - preview/staging: non-indexable (noindex,nofollow and/or protected)
+         - production: indexable
+      5) Deploy to Vercel staging and verify core pages render.
+
+      Done when:
+      - Staging deploy matches planned structure and parity scope
+      - Non-prod indexing safeguards are in place
+
+      Output JSON:
+      {
+        "phase": "build",
+        "phase_status": "complete|needs_input|blocked",
+        "complete": true,
+        "summary": "<1-3 sentences>",
+        "artifacts": {
+          "repo_url": "<url or null>",
+          "vercel_project": "<string or null>",
+          "staging_url": "<url or null>"
+        },
+        "missing_inputs": [],
+        "risks": [],
+        "next_steps": ["Proceed to technical SEO implementation"],
+        "needs_human": false,
+        "escalation_reason": null
+      }
+
+    output_schema:
+      type: "object"
+      required: ["phase", "phase_status", "complete", "summary", "artifacts", "missing_inputs", "risks", "next_steps", "needs_human"]
+      properties:
+        phase: { type: "string" }
+        phase_status: { type: "string" }
+        complete: { type: "boolean" }
+        summary: { type: "string" }
+        artifacts: { type: "object" }
+        missing_inputs: { type: "array" }
+        risks: { type: "array" }
+        next_steps: { type: "array" }
+        needs_human: { type: "boolean" }
+        escalation_reason: { type: ["string", "null"] }
+
+    state_writes:
+      - path: "phase_status.build"
+        from: "output.phase_status"
+      - path: "build.complete"
+        from: "output.complete"
+      - path: "build.summary"
+        from: "output.summary"
+      - path: "build.artifacts"
+        from: "output.artifacts"
+      - path: "build.missing_inputs"
+        from: "output.missing_inputs"
+      - path: "build.risks"
+        from: "output.risks"
+      - path: "build.next_steps"
+        from: "output.next_steps"
+      - path: "needs_human"
+        from: "output.needs_human"
+      - path: "escalation_reason"
+        from: "output.escalation_reason"
+
+  # ═══════════════════════════════════════════════════════════════════
+  # PHASE 5: TECHNICAL SEO
+  # ═══════════════════════════════════════════════════════════════════
+  - id: "technical_seo"
+    type: "flow"
+    stage: "technical_seo"
+    purpose: "Implement technical SEO (metadata, canonicals, schema, sitemap, robots)"
+
+    prompt: |
+      You are at PHASE 5 - Technical SEO Implementation.
+
+      Goal: Preserve and improve SEO signals without changing intent or creating indexing mistakes.
+
+      Required work (staging):
+      1) On-page essentials:
+         - One H1 per page aligned to primary intent
+         - Titles include service + location where relevant
+         - Meta descriptions sell the click (avoid duplicates)
+      2) Canonicals:
+         - Correct canonical for every indexable page
+      3) Structured data:
+         - LocalBusiness (site-wide)
+         - WebSite + BreadcrumbList
+         - Service + FAQPage where applicable (no spammy aggregateRating)
+      4) Indexing controls:
+         - staging/preview: noindex,nofollow
+         - production: indexable
+      5) Sitemaps + robots:
+         - sitemap(s) reflect intended indexable pages
+         - robots.txt correct and environment-aware
+
+      Done when:
+      - SEO tests pass (no missing canonicals; schema validates; robots/sitemaps correct)
+
+      Output JSON:
+      {
+        "phase": "technical_seo",
+        "phase_status": "complete|needs_input|blocked",
+        "complete": true,
+        "summary": "<1-3 sentences>",
+        "artifacts": {
+          "technical_seo_audit_path": "<path or null>",
+          "robots_and_sitemaps_path": "<path or null>"
+        },
+        "missing_inputs": [],
+        "risks": [],
+        "next_steps": ["Proceed to performance/CWV work"],
+        "needs_human": false,
+        "escalation_reason": null
+      }
+
+    output_schema:
+      type: "object"
+      required: ["phase", "phase_status", "complete", "summary", "artifacts", "missing_inputs", "risks", "next_steps", "needs_human"]
+      properties:
+        phase: { type: "string" }
+        phase_status: { type: "string" }
+        complete: { type: "boolean" }
+        summary: { type: "string" }
+        artifacts: { type: "object" }
+        missing_inputs: { type: "array" }
+        risks: { type: "array" }
+        next_steps: { type: "array" }
+        needs_human: { type: "boolean" }
+        escalation_reason: { type: ["string", "null"] }
+
+    state_writes:
+      - path: "phase_status.technical_seo"
+        from: "output.phase_status"
+      - path: "technical_seo.complete"
+        from: "output.complete"
+      - path: "technical_seo.summary"
+        from: "output.summary"
+      - path: "technical_seo.artifacts"
+        from: "output.artifacts"
+      - path: "technical_seo.missing_inputs"
+        from: "output.missing_inputs"
+      - path: "technical_seo.risks"
+        from: "output.risks"
+      - path: "technical_seo.next_steps"
+        from: "output.next_steps"
+      - path: "needs_human"
+        from: "output.needs_human"
+      - path: "escalation_reason"
+        from: "output.escalation_reason"
+
+  # ═══════════════════════════════════════════════════════════════════
+  # PHASE 6: PERFORMANCE + CORE WEB VITALS
+  # ═══════════════════════════════════════════════════════════════════
+  - id: "performance_cwv"
+    type: "flow"
+    stage: "performance_cwv"
+    purpose: "Establish CWV baseline/targets and implement performance budgets"
+
+    prompt: |
+      You are at PHASE 6 - Performance + Core Web Vitals (CWV).
+
+      Goal: Engineer for speed and avoid post-launch regressions.
+
+      CWV targets:
+      - LCP ≤ 2.5s
+      - INP ≤ 200ms
+      - CLS ≤ 0.1
+
+      Required inputs (ask for missing):
+      - PSI/Lighthouse results (mobile-first)
+      - GSC CWV field data groups if available
+      - List of third-party scripts/widgets required at launch
+
+      Required work:
+      1) Capture baseline and identify biggest offenders (images, JS, fonts, third-party).
+      2) Define a performance budget (JS size, image formats, fonts, third-party limits).
+      3) Apply Next.js/Vercel tactics:
+         - Image optimization (no oversized hero)
+         - Reduce client hydration where possible
+         - Defer/limit third-party scripts
+         - Preload LCP element; reserve layout space (CLS)
+
+      Done when:
+      - Performance budgets are defined and the site is on track to meet CWV targets
+
+      Output JSON:
+      {
+        "phase": "performance_cwv",
+        "phase_status": "complete|needs_input|blocked",
+        "complete": true,
+        "summary": "<1-3 sentences>",
+        "artifacts": {
+          "cwv_report_path": "<path or null>"
+        },
+        "missing_inputs": [],
+        "risks": [],
+        "next_steps": ["Proceed to QA"],
+        "needs_human": false,
+        "escalation_reason": null
+      }
+
+    output_schema:
+      type: "object"
+      required: ["phase", "phase_status", "complete", "summary", "artifacts", "missing_inputs", "risks", "next_steps", "needs_human"]
+      properties:
+        phase: { type: "string" }
+        phase_status: { type: "string" }
+        complete: { type: "boolean" }
+        summary: { type: "string" }
+        artifacts: { type: "object" }
+        missing_inputs: { type: "array" }
+        risks: { type: "array" }
+        next_steps: { type: "array" }
+        needs_human: { type: "boolean" }
+        escalation_reason: { type: ["string", "null"] }
+
+    state_writes:
+      - path: "phase_status.performance_cwv"
+        from: "output.phase_status"
+      - path: "performance_cwv.complete"
+        from: "output.complete"
+      - path: "performance_cwv.summary"
+        from: "output.summary"
+      - path: "performance_cwv.artifacts"
+        from: "output.artifacts"
+      - path: "performance_cwv.missing_inputs"
+        from: "output.missing_inputs"
+      - path: "performance_cwv.risks"
+        from: "output.risks"
+      - path: "performance_cwv.next_steps"
+        from: "output.next_steps"
+      - path: "needs_human"
+        from: "output.needs_human"
+      - path: "escalation_reason"
+        from: "output.escalation_reason"
+
+  # ═══════════════════════════════════════════════════════════════════
+  # PHASE 7: QA
+  # ═══════════════════════════════════════════════════════════════════
+  - id: "qa"
+    type: "flow"
+    stage: "qa"
+    purpose: "Pre-launch QA for SEO, redirects, tracking, and crawl health"
+
+    prompt: |
+      You are at PHASE 7 - QA (Pre-Launch).
+
+      Goal: Prevent “mystery ranking drops” by catching crawl/indexing/redirect/tracking issues before DNS cutover.
+
+      Required work:
+      1) Crawl staging and confirm:
+         - no broken internal links
+         - correct canonicals
+         - title/H1 present and aligned
+         - schema validates
+      2) Redirect QA:
+         - validate old → new redirects for priority legacy URL set
+         - no redirect chains or loops
+         - status codes are correct (301/308)
+      3) Sitemap/robots QA:
+         - sitemap exists and matches intended indexable pages
+         - staging is noindex; production will be indexable
+      4) Tracking QA:
+         - GA4 events + conversions
+         - GSC verification readiness
+         - call tracking does not break NAP consistency
+      5) Media QA:
+         - old uploads/PDFs resolve or redirect correctly
+
+      Output JSON:
+      {
+        "phase": "qa",
+        "phase_status": "complete|needs_input|blocked",
+        "complete": true,
+        "pass": true,
+        "summary": "<1-3 sentences>",
+        "artifacts": {
+          "qa_crawl_report_path": "<path or null>"
+        },
+        "missing_inputs": [],
+        "risks": [],
+        "next_steps": ["Proceed to launch"],
+        "needs_human": false,
+        "escalation_reason": null
+      }
+
+    output_schema:
+      type: "object"
+      required: ["phase", "phase_status", "complete", "pass", "summary", "artifacts", "missing_inputs", "risks", "next_steps", "needs_human"]
+      properties:
+        phase: { type: "string" }
+        phase_status: { type: "string" }
+        complete: { type: "boolean" }
+        pass: { type: "boolean" }
+        summary: { type: "string" }
+        artifacts: { type: "object" }
+        missing_inputs: { type: "array" }
+        risks: { type: "array" }
+        next_steps: { type: "array" }
+        needs_human: { type: "boolean" }
+        escalation_reason: { type: ["string", "null"] }
+
+    state_writes:
+      - path: "phase_status.qa"
+        from: "output.phase_status"
+      - path: "qa.complete"
+        from: "output.complete"
+      - path: "qa.pass"
+        from: "output.pass"
+      - path: "qa.summary"
+        from: "output.summary"
+      - path: "qa.artifacts"
+        from: "output.artifacts"
+      - path: "qa.missing_inputs"
+        from: "output.missing_inputs"
+      - path: "qa.risks"
+        from: "output.risks"
+      - path: "qa.next_steps"
+        from: "output.next_steps"
+      - path: "needs_human"
+        from: "output.needs_human"
+      - path: "escalation_reason"
+        from: "output.escalation_reason"
+
+  # ═══════════════════════════════════════════════════════════════════
+  # PHASE 8: LAUNCH
+  # ═══════════════════════════════════════════════════════════════════
+  - id: "launch"
+    type: "flow"
+    stage: "launch"
+    purpose: "Execute cutover with DNS swap, smoke tests, and monitoring setup"
+
+    prompt: |
+      You are at PHASE 8 - Launch (Minimal Risk Cutover).
+
+      Goal: Cut over to Vercel with minimal SEO risk and an immediate monitoring plan.
+
+      Required work:
+      1) Freeze WordPress content changes (migration target must stop moving).
+      2) Ensure redirect rules are deployed (edge/server) and validated for priority legacy URLs.
+      3) Swap DNS to Vercel (or complete equivalent cutover).
+      4) Smoke test:
+         - homepage loads
+         - top money pages load
+         - top legacy URLs redirect correctly
+      5) Submit sitemap in GSC as soon as production is live.
+      6) Enable monitoring:
+         - crawl errors/coverage
+         - index status for key pages
+         - CWV field groups
+         - rankings for priority pages
+
+      Output JSON:
+      {
+        "phase": "launch",
+        "phase_status": "complete|needs_input|blocked",
+        "complete": true,
+        "summary": "<1-3 sentences>",
+        "artifacts": {
+          "launch_runbook_path": "<path or null>"
+        },
+        "missing_inputs": [],
+        "risks": [],
+        "next_steps": ["Proceed to post-launch stabilization"],
+        "needs_human": false,
+        "escalation_reason": null
+      }
+
+    output_schema:
+      type: "object"
+      required: ["phase", "phase_status", "complete", "summary", "artifacts", "missing_inputs", "risks", "next_steps", "needs_human"]
+      properties:
+        phase: { type: "string" }
+        phase_status: { type: "string" }
+        complete: { type: "boolean" }
+        summary: { type: "string" }
+        artifacts: { type: "object" }
+        missing_inputs: { type: "array" }
+        risks: { type: "array" }
+        next_steps: { type: "array" }
+        needs_human: { type: "boolean" }
+        escalation_reason: { type: ["string", "null"] }
+
+    state_writes:
+      - path: "phase_status.launch"
+        from: "output.phase_status"
+      - path: "launch.complete"
+        from: "output.complete"
+      - path: "launch.summary"
+        from: "output.summary"
+      - path: "launch.artifacts"
+        from: "output.artifacts"
+      - path: "launch.missing_inputs"
+        from: "output.missing_inputs"
+      - path: "launch.risks"
+        from: "output.risks"
+      - path: "launch.next_steps"
+        from: "output.next_steps"
+      - path: "needs_human"
+        from: "output.needs_human"
+      - path: "escalation_reason"
+        from: "output.escalation_reason"
+
+  # ═══════════════════════════════════════════════════════════════════
+  # PHASE 9: POST-LAUNCH
+  # ═══════════════════════════════════════════════════════════════════
+  - id: "post_launch"
+    type: "flow"
+    stage: "post_launch"
+    purpose: "Stabilize rankings and execute post-launch growth iteration"
+
+    prompt: |
+      You are at PHASE 9 - Post-Launch Stabilization + Growth.
+
+      Goal: Stabilize SEO after migration, then grow traffic + leads via internal linking and new pages from the keyword map.
+
+      Required work:
+      1) Monitor daily during stabilization (first 7-14 days):
+         - GSC coverage/crawl errors
+         - 404s and redirect misses
+         - index status for priority pages
+         - rankings for priority pages/queries
+         - CWV field groups (INP often impacted by third-party)
+      2) Triage and fix:
+         - missing redirects
+         - accidental noindex/canonical mistakes
+         - broken internal links
+      3) Growth iteration:
+         - internal linking upgrades (nav/home/service/FAQ cross-links)
+         - build missing pages from keyword gaps (problem/FAQ long-tail, location modifiers)
+         - add local trust blocks (service areas, testimonials, directions/parking)
+
+      Output JSON:
+      {
+        "phase": "post_launch",
+        "phase_status": "complete|needs_input|blocked",
+        "complete": true,
+        "summary": "<1-3 sentences>",
+        "artifacts": {
+          "post_launch_monitoring_path": "<path or null>"
+        },
+        "missing_inputs": [],
+        "risks": [],
+        "next_steps": ["Workflow complete"],
+        "needs_human": false,
+        "escalation_reason": null
+      }
+
+    output_schema:
+      type: "object"
+      required: ["phase", "phase_status", "complete", "summary", "artifacts", "missing_inputs", "risks", "next_steps", "needs_human"]
+      properties:
+        phase: { type: "string" }
+        phase_status: { type: "string" }
+        complete: { type: "boolean" }
+        summary: { type: "string" }
+        artifacts: { type: "object" }
+        missing_inputs: { type: "array" }
+        risks: { type: "array" }
+        next_steps: { type: "array" }
+        needs_human: { type: "boolean" }
+        escalation_reason: { type: ["string", "null"] }
+
+    state_writes:
+      - path: "phase_status.post_launch"
+        from: "output.phase_status"
+      - path: "post_launch.complete"
+        from: "output.complete"
+      - path: "post_launch.summary"
+        from: "output.summary"
+      - path: "post_launch.artifacts"
+        from: "output.artifacts"
+      - path: "post_launch.missing_inputs"
+        from: "output.missing_inputs"
+      - path: "post_launch.risks"
+        from: "output.risks"
+      - path: "post_launch.next_steps"
+        from: "output.next_steps"
+      - path: "needs_human"
+        from: "output.needs_human"
+      - path: "escalation_reason"
+        from: "output.escalation_reason"
+
+  # ═══════════════════════════════════════════════════════════════════
+  # TERMINAL NODES
+  # ═══════════════════════════════════════════════════════════════════
+  - id: "success"
+    type: "terminal"
+    stage: "complete"
+    purpose: "Migration workflow completed successfully"
+    on_reach:
+      - action: "trigger_learning"
+        outcome: "success"
+
+  - id: "failure"
+    type: "terminal"
+    stage: "complete"
+    purpose: "Migration workflow failed"
+    on_reach:
+      - action: "trigger_learning"
+        outcome: "failure"
+
+  - id: "escalate"
+    type: "terminal"
+    stage: "escalated"
+    purpose: "Escalate to human due to missing access, high risk, or ambiguity"
+    on_reach:
+      - action: "trigger_learning"
+        outcome: "escalated"
+
+edges:
+  - id: "e_intake_keyword_research"
+    from: "intake"
+    to: "keyword_research"
+    type: "laminar"
+    guard: "state.data.get('ready_for_keyword_research', False) == True and state.data.get('needs_human', False) != True and state.data.get('critical_error', False) != True"
+    priority: 1
+
+  # Phase 1 → Phase 2
+  - id: "e_keyword_research_url_mapping"
+    from: "keyword_research"
+    to: "url_mapping"
+    type: "laminar"
+    guard: "state.data.get('needs_human', False) != True and state.data.get('critical_error', False) != True and state.data.keyword_research.get('complete', False) == True"
+    priority: 1
+
+  - id: "e_keyword_research_retry"
+    from: "keyword_research"
+    to: "keyword_research"
+    type: "laminar"
+    guard: "state.data.get('needs_human', False) != True and state.data.get('critical_error', False) != True and state.data.keyword_research.get('complete', False) != True"
+    priority: 2
+
+  # Phase 2 → Phase 3
+  - id: "e_url_mapping_redirect_planning"
+    from: "url_mapping"
+    to: "redirect_planning"
+    type: "laminar"
+    guard: "state.data.get('needs_human', False) != True and state.data.get('critical_error', False) != True and state.data.url_mapping.get('complete', False) == True"
+    priority: 1
+
+  - id: "e_url_mapping_retry"
+    from: "url_mapping"
+    to: "url_mapping"
+    type: "laminar"
+    guard: "state.data.get('needs_human', False) != True and state.data.get('critical_error', False) != True and state.data.url_mapping.get('complete', False) != True"
+    priority: 2
+
+  # Phase 3 → Phase 4
+  - id: "e_redirect_planning_build"
+    from: "redirect_planning"
+    to: "build"
+    type: "laminar"
+    guard: "state.data.get('needs_human', False) != True and state.data.get('critical_error', False) != True and state.data.redirect_planning.get('complete', False) == True"
+    priority: 1
+
+  - id: "e_redirect_planning_retry"
+    from: "redirect_planning"
+    to: "redirect_planning"
+    type: "laminar"
+    guard: "state.data.get('needs_human', False) != True and state.data.get('critical_error', False) != True and state.data.redirect_planning.get('complete', False) != True"
+    priority: 2
+
+  # Phase 4 → Phase 5
+  - id: "e_build_technical_seo"
+    from: "build"
+    to: "technical_seo"
+    type: "laminar"
+    guard: "state.data.get('needs_human', False) != True and state.data.get('critical_error', False) != True and state.data.build.get('complete', False) == True"
+    priority: 1
+
+  - id: "e_build_retry"
+    from: "build"
+    to: "build"
+    type: "laminar"
+    guard: "state.data.get('needs_human', False) != True and state.data.get('critical_error', False) != True and state.data.build.get('complete', False) != True"
+    priority: 2
+
+  # Phase 5 → Phase 6
+  - id: "e_technical_seo_performance"
+    from: "technical_seo"
+    to: "performance_cwv"
+    type: "laminar"
+    guard: "state.data.get('needs_human', False) != True and state.data.get('critical_error', False) != True and state.data.technical_seo.get('complete', False) == True"
+    priority: 1
+
+  - id: "e_technical_seo_retry"
+    from: "technical_seo"
+    to: "technical_seo"
+    type: "laminar"
+    guard: "state.data.get('needs_human', False) != True and state.data.get('critical_error', False) != True and state.data.technical_seo.get('complete', False) != True"
+    priority: 2
+
+  # Phase 6 → Phase 7
+  - id: "e_performance_qa"
+    from: "performance_cwv"
+    to: "qa"
+    type: "laminar"
+    guard: "state.data.get('needs_human', False) != True and state.data.get('critical_error', False) != True and state.data.performance_cwv.get('complete', False) == True"
+    priority: 1
+
+  - id: "e_performance_retry"
+    from: "performance_cwv"
+    to: "performance_cwv"
+    type: "laminar"
+    guard: "state.data.get('needs_human', False) != True and state.data.get('critical_error', False) != True and state.data.performance_cwv.get('complete', False) != True"
+    priority: 2
+
+  # Phase 7 → Phase 8
+  - id: "e_qa_launch"
+    from: "qa"
+    to: "launch"
+    type: "laminar"
+    guard: "state.data.get('needs_human', False) != True and state.data.get('critical_error', False) != True and state.data.qa.get('pass', False) == True"
+    priority: 1
+
+  - id: "e_qa_retry"
+    from: "qa"
+    to: "qa"
+    type: "laminar"
+    guard: "state.data.get('needs_human', False) != True and state.data.get('critical_error', False) != True and state.data.qa.get('pass', False) != True"
+    priority: 2
+
+  # Phase 8 → Phase 9
+  - id: "e_launch_post_launch"
+    from: "launch"
+    to: "post_launch"
+    type: "laminar"
+    guard: "state.data.get('needs_human', False) != True and state.data.get('critical_error', False) != True and state.data.launch.get('complete', False) == True"
+    priority: 1
+
+  - id: "e_launch_retry"
+    from: "launch"
+    to: "launch"
+    type: "laminar"
+    guard: "state.data.get('needs_human', False) != True and state.data.get('critical_error', False) != True and state.data.launch.get('complete', False) != True"
+    priority: 2
+
+  # Phase 9 → Success
+  - id: "e_post_launch_success"
+    from: "post_launch"
+    to: "success"
+    type: "laminar"
+    guard: "state.data.get('needs_human', False) != True and state.data.get('critical_error', False) != True and state.data.post_launch.get('complete', False) == True"
+    priority: 1
+
+  - id: "e_post_launch_retry"
+    from: "post_launch"
+    to: "post_launch"
+    type: "laminar"
+    guard: "state.data.get('needs_human', False) != True and state.data.get('critical_error', False) != True and state.data.post_launch.get('complete', False) != True"
+    priority: 2
+
+  # Global failure / escalation paths
+  - id: "e_any_escalate"
+    from: "*"
+    to: "escalate"
+    type: "laminar"
+    guard: "state.data.get('needs_human', False) == True"
+    priority: 100
+
+  - id: "e_max_steps_failure"
+    from: "*"
+    to: "failure"
+    type: "laminar"
+    guard: "state.counters.total_steps >= state.brain.execution.max_steps"
+    priority: 99
+
+  - id: "e_critical_error"
+    from: "*"
+    to: "failure"
+    type: "laminar"
+    guard: "state.data.get('critical_error', False) == True"
+    priority: 98
+
+relationships:
+  - from: "keyword_research"
+    to: "url_mapping"
+    type: "informs"
+    weight: 1.0
+    note: "Keyword intent clarifies which URLs/pages must be preserved"
+
+  - from: "url_mapping"
+    to: "redirect_planning"
+    type: "grounds"
+    weight: 1.0
+    note: "URL inventory + SEO signals ground redirect decisions"
+
+  - from: "redirect_planning"
+    to: "build"
+    type: "enables"
+    weight: 1.0
+    note: "Routing/redirect plan enables parity-first rebuild"
+
+  - from: "technical_seo"
+    to: "qa"
+    type: "informs"
+    weight: 0.9
+    note: "SEO implementation reduces QA crawl issues"
+
+  - from: "performance_cwv"
+    to: "qa"
+    type: "informs"
+    weight: 0.8
+    note: "Performance work reduces launch risk from CWV regressions"
+
+  - from: "qa"
+    to: "launch"
+    type: "enables"
+    weight: 1.0
+    note: "Passing QA enables safe cutover"
+
+  - from: "launch"
+    to: "post_launch"
+    type: "informs"
+    weight: 0.8
+    note: "Launch outcomes drive post-launch monitoring priorities"

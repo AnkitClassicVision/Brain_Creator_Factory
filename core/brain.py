@@ -7,7 +7,7 @@ import uuid
 import yaml
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Literal, Optional
+from typing import Any, Dict, List, Literal, Optional, Tuple
 from dataclasses import dataclass, field
 from enum import Enum
 
@@ -43,6 +43,112 @@ class Constraint:
     type: Literal["must_do", "must_not"]
     description: str
     enforcement: Literal["hard", "soft"] = "hard"
+
+
+@dataclass
+class StopRule:
+    """
+    Stop rule that halts execution and requires user input.
+
+    Stop rules are critical guardrails that prevent LLM deviation.
+    When a stop rule condition is met, the workflow MUST halt and
+    ask the user before proceeding. LLMs naturally want to "help"
+    by improvising - stop rules enforce explicit human decision points.
+
+    Examples of stop rule conditions:
+    - Template file missing (don't generate from scratch)
+    - Calculated value below minimum (don't use invalid pricing)
+    - Data quality too low (don't proceed with bad data)
+    - Critical file missing (don't improvise structure)
+    """
+    condition: str  # Description of the condition that triggers the stop
+    action: str     # What to do when triggered (e.g., "STOP and ask user")
+    reason: str     # Why this stop rule exists
+    check_expression: Optional[str] = None  # Optional programmatic check
+
+    def matches(self, state_context: Dict[str, Any]) -> bool:
+        """
+        Check if this stop rule should be triggered based on state.
+
+        Args:
+            state_context: The current state context for evaluation
+
+        Returns:
+            True if the stop rule condition is met and workflow should halt
+        """
+        if not self.check_expression:
+            return False
+
+        try:
+            allowed_builtins = {
+                "len": len, "any": any, "all": all,
+                "min": min, "max": max, "str": str, "int": int, "float": float,
+                "True": True, "False": False, "None": None, "abs": abs,
+            }
+            return bool(eval(
+                self.check_expression,
+                {"__builtins__": allowed_builtins},
+                state_context
+            ))
+        except Exception:
+            return False
+
+
+@dataclass
+class ValidationRule:
+    """
+    A validation rule that checks LLM output against expected constraints.
+
+    Validation rules enforce output quality and prevent drift from
+    expected behavior. They check that LLM outputs meet specific criteria.
+    """
+    name: str
+    description: str
+    check_expression: str  # Python expression that should return True if valid
+    error_message: str     # Message to show if validation fails
+    severity: Literal["error", "warning", "info"] = "error"
+
+    def validate(self, output: Dict[str, Any], state: Dict[str, Any]) -> Tuple[bool, str]:
+        """
+        Validate output against this rule.
+
+        Returns:
+            Tuple of (is_valid, error_message_if_invalid)
+        """
+        try:
+            context = {"output": output, "state": state}
+            allowed_builtins = {
+                "len": len, "any": any, "all": all,
+                "min": min, "max": max, "str": str, "int": int, "float": float,
+                "True": True, "False": False, "None": None, "abs": abs,
+                "isinstance": isinstance, "type": type,
+            }
+            result = eval(
+                self.check_expression,
+                {"__builtins__": allowed_builtins},
+                context
+            )
+            if result:
+                return True, ""
+            return False, self.error_message
+        except Exception as e:
+            return False, f"Validation error: {e}"
+
+
+@dataclass
+class MinimumEnforcement:
+    """
+    Configuration for minimum value enforcement.
+
+    Minimum enforcements ensure that calculated values meet business
+    requirements. When a calculated value falls below the minimum,
+    the system either auto-corrects (with logging) or stops for user input.
+    """
+    field: str              # The field to check (e.g., "pricing.PILOT_WEEKLY")
+    minimum: float          # The minimum allowed value
+    auto_correct: bool      # If True, auto-correct to minimum; if False, stop
+    log_correction: bool    # If True, log when correction is applied
+    error_message: str      # Message for stop/log
 
 
 @dataclass
@@ -103,12 +209,24 @@ class BrainManifest:
     objectives: List[Objective] = field(default_factory=list)
     deliverables: List[Deliverable] = field(default_factory=list)
 
-    # Constraints
+    # Constraints (must_do, must_not)
     constraints: List[Constraint] = field(default_factory=list)
+
+    # Stop rules - critical guardrails for LLM deviation prevention
+    stop_rules: List[StopRule] = field(default_factory=list)
+
+    # Validation rules - output quality enforcement
+    validation_rules: List[ValidationRule] = field(default_factory=list)
+
+    # Minimum enforcements - business value floors
+    minimum_enforcements: List[MinimumEnforcement] = field(default_factory=list)
 
     # Configuration
     learning: LearningPolicy = field(default_factory=LearningPolicy)
     execution: ExecutionConfig = field(default_factory=ExecutionConfig)
+
+    # Business config (pricing minimums, thresholds, etc.)
+    config: Dict[str, Any] = field(default_factory=dict)
 
     # Skills
     skills: List[str] = field(default_factory=list)
@@ -162,9 +280,39 @@ class BrainManifest:
                 ],
             },
             "constraints": {
+                "stop_rules": [
+                    {
+                        "condition": sr.condition,
+                        "action": sr.action,
+                        "reason": sr.reason,
+                        "check_expression": sr.check_expression,
+                    }
+                    for sr in self.stop_rules
+                ],
                 "must_do": [c.description for c in self.constraints if c.type == "must_do"],
                 "must_not": [c.description for c in self.constraints if c.type == "must_not"],
             },
+            "validation_rules": [
+                {
+                    "name": vr.name,
+                    "description": vr.description,
+                    "check_expression": vr.check_expression,
+                    "error_message": vr.error_message,
+                    "severity": vr.severity,
+                }
+                for vr in self.validation_rules
+            ],
+            "minimum_enforcements": [
+                {
+                    "field": me.field,
+                    "minimum": me.minimum,
+                    "auto_correct": me.auto_correct,
+                    "log_correction": me.log_correction,
+                    "error_message": me.error_message,
+                }
+                for me in self.minimum_enforcements
+            ],
+            "config": self.config,
             "learning": {
                 "enabled": self.learning.enabled,
                 "mode": self.learning.mode.value,
@@ -191,20 +339,71 @@ class BrainManifest:
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> BrainManifest:
         """Load from dictionary."""
+        def parse_dt(value: Any) -> datetime:
+            if isinstance(value, datetime):
+                return value
+            if value is None:
+                return datetime.utcnow()
+            s = str(value).strip()
+            if not s:
+                return datetime.utcnow()
+            # Support ISO timestamps with trailing Z.
+            if s.endswith("Z"):
+                s = s[:-1] + "+00:00"
+            return datetime.fromisoformat(s)
+
         brain = data.get("brain", {})
         objectives = data.get("objectives", {})
         constraints_data = data.get("constraints", {})
+        validation_rules_data = data.get("validation_rules", [])
+        minimum_enforcements_data = data.get("minimum_enforcements", [])
+        config_data = data.get("config", {})
         learning_data = data.get("learning", {})
         execution_data = data.get("execution", {})
         skills_data = data.get("skills", {})
         metadata = data.get("metadata", {})
 
+        created_raw = brain.get("created_at") or brain.get("created")
+        updated_raw = brain.get("updated_at") or brain.get("updated") or created_raw
+
+        # Parse stop rules from constraints
+        stop_rules = []
+        for sr in constraints_data.get("stop_rules", []):
+            stop_rules.append(StopRule(
+                condition=sr.get("condition", ""),
+                action=sr.get("action", ""),
+                reason=sr.get("reason", ""),
+                check_expression=sr.get("check_expression"),
+            ))
+
+        # Parse validation rules
+        validation_rules = []
+        for vr in validation_rules_data:
+            validation_rules.append(ValidationRule(
+                name=vr.get("name", ""),
+                description=vr.get("description", ""),
+                check_expression=vr.get("check_expression", "True"),
+                error_message=vr.get("error_message", "Validation failed"),
+                severity=vr.get("severity", "error"),
+            ))
+
+        # Parse minimum enforcements
+        minimum_enforcements = []
+        for me in minimum_enforcements_data:
+            minimum_enforcements.append(MinimumEnforcement(
+                field=me.get("field", ""),
+                minimum=me.get("minimum", 0),
+                auto_correct=me.get("auto_correct", True),
+                log_correction=me.get("log_correction", True),
+                error_message=me.get("error_message", "Value below minimum"),
+            ))
+
         return cls(
             id=brain.get("id", str(uuid.uuid4())),
             name=brain.get("name", "unnamed"),
             version=brain.get("version", "1.0.0"),
-            created_at=datetime.fromisoformat(brain.get("created_at", datetime.utcnow().isoformat())),
-            updated_at=datetime.fromisoformat(brain.get("updated_at", datetime.utcnow().isoformat())),
+            created_at=parse_dt(created_raw),
+            updated_at=parse_dt(updated_raw),
             purpose=brain.get("purpose", ""),
             primary_goal=objectives.get("primary_goal", ""),
             objectives=[
@@ -231,6 +430,10 @@ class BrainManifest:
                 Constraint(type="must_not", description=c)
                 for c in constraints_data.get("must_not", [])
             ],
+            stop_rules=stop_rules,
+            validation_rules=validation_rules,
+            minimum_enforcements=minimum_enforcements,
+            config=config_data,
             learning=LearningPolicy(
                 enabled=learning_data.get("enabled", True),
                 mode=LearningMode(learning_data.get("mode", "auto_safe")),

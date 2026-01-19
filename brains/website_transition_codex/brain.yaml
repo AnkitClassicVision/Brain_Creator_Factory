@@ -1,0 +1,181 @@
+brain:
+  id: "website-transition-codex-001"
+  name: "website_transition_codex"
+  version: "1.0.0"
+  created_at: "2026-01-15T00:00:00+00:00"
+  updated_at: "2026-01-15T00:00:00+00:00"
+  purpose: "Migrate a WordPress site to a GitHub → Vercel workflow while preserving SEO equity (rankings/backlinks), improving local SEO structure, and meeting Core Web Vitals targets."
+
+objectives:
+  primary_goal: "Execute an SEO-safe website migration by keeping URLs whenever possible, producing an exhaustive URL inventory + redirect plan, rebuilding on Next.js/Vercel with technical SEO best practices, validating performance/CWV, and monitoring post-launch until rankings stabilize."
+  objectives:
+    - description: "Validate keyword strategy and page intent (local SEO)"
+      success_criteria:
+        - "Build a keyword universe across all local intent buckets (service+city, near-me, problem-based, price/insurance, brand/comparison, location modifiers)."
+        - "Complete competitor reality-check for top services (local pack + top organic) and extract structural patterns (service pages, location pages, FAQ depth, reviews/GBP strength)."
+        - "Produce a keyword-to-page map where every priority keyword maps to an existing or planned page (no orphan clusters)."
+        - "Assign priorities to clusters/pages (traffic potential × conversion intent × difficulty × business relevance)."
+      priority: 1
+    - description: "Inventory all current URLs and SEO signals"
+      success_criteria:
+        - "Crawl current site and build a full URL inventory (status, indexability, canonical, title/H1 presence, internal links in/out)."
+        - "Pull GSC data (top pages, top queries, external links) and connect it to the URL inventory."
+        - "Integrate backlink data (Ahrefs/Semrush or export) to flag URLs that must be preserved or redirected carefully."
+        - "Create a master URL sheet with an explicit action for every URL: keep, redirect (target), merge, noindex, remove/410."
+      priority: 1
+    - description: "Plan future-state architecture and redirects"
+      success_criteria:
+        - "Lock URL policy: preserve existing money-page URLs unless there is a compelling reason (and then redirect one-to-one)."
+        - "Create a future sitemap/page map aligned to keyword intent (avoid thin duplicates; consolidate only when intent matches)."
+        - "Produce a complete redirect map (old → new) with no redirect chains, no loops, and no mass-homepage redirects."
+        - "Explicitly handle WordPress ghost URLs (tags/authors/dates/attachments/search) via noindex/redirect/removal policy."
+        - "Define media strategy for indexed `/wp-content/uploads/...` URLs (preserve paths or implement scalable redirects)."
+      priority: 1
+    - description: "Build and stage deploy on GitHub → Vercel"
+      success_criteria:
+        - "Repo/branch strategy defined (`main`=prod, `staging`=pre-prod QA) with preview deployments for PRs."
+        - "Content workflow selected (MDX, Git-backed CMS, or headless CMS) to ensure non-technical edits remain feasible."
+        - "Staging/preview environments are non-indexable (`noindex, nofollow` and/or protected access)."
+        - "Staging deploy achieves content parity at launch scope (same pages/critical assets) with stable routing."
+      priority: 1
+    - description: "Implement technical SEO (metadata, canonicals, schema, index controls)"
+      success_criteria:
+        - "Every indexable page has a single, intent-matching H1; titles and meta descriptions align to local intent and sell the click."
+        - "Canonicals are present and correct across all indexable pages (self-referential where appropriate)."
+        - "Robots and sitemap strategy is correct for staging vs production (no accidental indexing of staging)."
+        - "Schema is implemented and validated (LocalBusiness, WebSite, BreadcrumbList, Service, FAQPage where applicable)."
+      priority: 1
+    - description: "Engineer for performance + Core Web Vitals"
+      success_criteria:
+        - "Baseline CWV captured (PSI/Lighthouse + GSC field groups when available) and targets set: LCP ≤ 2.5s, INP ≤ 200ms, CLS ≤ 0.1."
+        - "Performance budgets defined (JS, images, fonts, third-party scripts) and enforced to prevent regressions."
+        - "Next.js/Vercel implementation follows CWV tactics: image optimization, minimal hydration, deferred third-party scripts, stable layout."
+      priority: 1
+    - description: "QA, launch, and monitoring"
+      success_criteria:
+        - "Pre-launch crawl passes: no broken internal links, correct canonicals, schema validates, sitemap matches indexable pages."
+        - "Redirect validation passes for priority legacy URLs with no chains (A→B→C) and correct 301/308 usage."
+        - "Tracking QA passes (GA4 events, conversions, GSC verification readiness, call tracking/NAP consistency)."
+        - "Launch runbook includes DNS cutover steps, rollback plan, smoke tests, and post-launch monitoring checklist."
+      priority: 1
+    - description: "Post-launch stabilization and growth iteration"
+      success_criteria:
+        - "GSC monitoring is active (coverage, crawl errors, CWV field groups) and issues are triaged daily during stabilization."
+        - "Internal linking improvements executed (nav/homepage/service/FAQ cross-linking) aligned to keyword page map."
+        - "New content pipeline started from keyword gaps (problem/FAQ long-tail, location modifiers) to grow traffic + leads."
+      priority: 2
+  deliverables:
+    - name: "keyword_universe.csv"
+      format: "CSV (keyword universe + clustering + scoring)"
+      required: true
+    - name: "keyword_page_map.csv"
+      format: "CSV (keyword cluster → target page mapping)"
+      required: true
+    - name: "current_url_inventory.csv"
+      format: "CSV (full crawl export + indexability + canonicals + titles/H1)"
+      required: true
+    - name: "master_url_sheet.csv"
+      format: "CSV (URL-by-URL action plan including redirects and priorities)"
+      required: true
+    - name: "redirect_map.csv"
+      format: "CSV (old_url → new_url with status codes and notes)"
+      required: true
+    - name: "redirects_config.json"
+      format: "JSON (Vercel/Next.js redirect configuration derived from redirect_map)"
+      required: true
+    - name: "sitemap_plan.csv"
+      format: "CSV (future sitemap/page map aligned to keywords)"
+      required: true
+    - name: "robots_and_sitemaps.json"
+      format: "JSON (robots rules + sitemap locations + indexing policy by environment)"
+      required: true
+    - name: "technical_seo_audit.json"
+      format: "JSON (metadata/canonical/schema checks + issues)"
+      required: true
+    - name: "cwv_report.json"
+      format: "JSON (baseline, budgets, targets, and regression risks)"
+      required: true
+    - name: "qa_crawl_report.json"
+      format: "JSON (broken links, canonicals, redirect chains, schema validation, indexing checks)"
+      required: true
+    - name: "launch_runbook.md"
+      format: "Markdown (cutover checklist + rollback plan + smoke tests)"
+      required: true
+    - name: "post_launch_monitoring.md"
+      format: "Markdown (30-day monitoring + triage plan + iteration backlog)"
+      required: false
+
+constraints:
+  must_do:
+    - "Keep the same URLs whenever possible (especially money pages)."
+    - "Launch with content parity (same pages) before structural rewrites; iterate after stability."
+    - "Confirm a content-editing workflow (CMS/MDX/Git) before rebuilding so the site won’t stagnate."
+    - "Create a full URL inventory and master URL sheet before changing information architecture."
+    - "Ensure every URL with traffic/backlinks has a deliberate outcome (keep or one-to-one redirect)."
+    - "Implement edge/server redirects (301/308) and validate they do not create chains or loops."
+    - "Noindex staging/preview environments and verify via crawl + headers/meta."
+    - "Set canonicals for all indexable pages and validate correctness."
+    - "Generate XML sitemap(s) that reflect intended indexable pages and submit in GSC post-launch."
+    - "Handle WordPress ghost URLs (tags/authors/dates/attachments/search) via explicit noindex/redirect/removal policy."
+    - "Preserve or redirect indexed media URLs (especially `/wp-content/uploads/...`)."
+    - "Meet CWV targets (LCP ≤ 2.5s, INP ≤ 200ms, CLS ≤ 0.1) with a defined performance budget."
+    - "Freeze WordPress content changes before cutover to avoid migrating a moving target."
+    - "Maintain NAP consistency; ensure call tracking does not create inconsistent citations."
+  must_not:
+    - "Change URLs without a complete redirect plan."
+    - "Redirect everything to the homepage (soft-404 spam pattern)."
+    - "Launch without verifying top legacy URLs redirect correctly (priority test set)."
+    - "Allow staging to be indexed (accidental `index,follow` in non-prod)."
+    - "Ship heavy client-side hydration when static/SSR can achieve the same result."
+    - "Add third-party scripts that materially degrade INP without measuring impact."
+    - "Consolidate pages with mismatched search intent (merge only when intent matches)."
+
+learning:
+  enabled: true
+  mode: "auto_safe"
+  auto_update:
+    edge_priorities: true
+    relationship_weights: true
+    guard_thresholds: false
+    node_prompts: false
+    add_nodes: false
+    remove_nodes: false
+    add_edges: false
+    remove_edges: false
+  requires_approval:
+    - "structural_changes"
+    - "constraint_changes"
+    - "url_policy_changes"
+    - "redirect_rule_changes"
+    - "quality_threshold_changes"
+    - "new_skills"
+  feedback_sources:
+    - "outcome"
+    - "user_feedback"
+    - "quality_scores"
+    - "gsc_metrics"
+    - "cwv_scores"
+
+execution:
+  max_steps: 300
+  max_parallel: 5
+  timeout_seconds: 14400
+  max_retries: 3
+
+skills:
+  available: []
+  auto_discover: true
+
+metadata:
+  tags:
+    - "seo"
+    - "migration"
+    - "wordpress"
+    - "vercel"
+    - "nextjs"
+    - "redirects"
+    - "local-seo"
+    - "cwv"
+    - "qa"
+    - "launch"
+  notes: "Derived from `website_transition_instructions.md` and formatted to match `brains/phone_to_present/` conventions."

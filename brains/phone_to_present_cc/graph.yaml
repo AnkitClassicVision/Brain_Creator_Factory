@@ -1,2112 +1,320 @@
+# Phone to Present CC - Workflow Graph
+# Traversal logic for claude.md orchestrator
+
 graph:
   name: "phone_to_present_cc"
   version: "1.0.0"
-  description: "Phone call analysis to sales presentation pipeline - Claude Code optimized"
+  orchestrator: "claude.md"
 
-start_node: "intake"
-terminal_nodes: ["success", "failure", "escalate"]
+start_node: "preflight"
+terminal_nodes: ["success", "failure", "blocked"]
+
+# ════════════════════════════════════════════════════════════════════
+# NODES - Each phase is a node
+# ════════════════════════════════════════════════════════════════════
 
 nodes:
-  # ═══════════════════════════════════════════════════════════════════
-  # INTAKE NODE
-  # ═══════════════════════════════════════════════════════════════════
-  - id: "intake"
-    type: "prime"
-    stage: "intake"
-    purpose: "Initialize workflow when user says 'start'"
+  # ──────────────────────────────────────────────────────────────────
+  # PHASE 0: Pre-flight
+  # ──────────────────────────────────────────────────────────────────
+  - id: "preflight"
+    stage: "preflight"
+    purpose: "Validate templates, references, config exist before starting"
+    instructions: |
+      1. Check templates/presentation_template.md exists
+      2. Check it contains class="pf-table" (v4 HTML)
+      3. Check references/slide18_paths_forward_v4.md exists
+      4. Load config/pricing_constants.yaml
+      5. Update state.preflight.*
+    gate:
+      field: "preflight.all_checks_passed"
+      on_pass: "discovery"
+      on_fail: "blocked"
 
-    prompt: |
-      You are at the INTAKE stage of the Phone Analysis Pipeline.
-
-      TRIGGER: User said "start" or requested phone analysis
-
-      Your task:
-      1. Acknowledge the workflow is starting
-      2. Check if a data file path was provided
-      3. Prepare to move to discovery phase
-
-      Output JSON:
-      {
-        "workflow_started": true,
-        "data_file_provided": "<path if given, else null>",
-        "ready_for_discovery": true
-      }
-
-    output_schema:
-      type: "object"
-      required: ["workflow_started", "ready_for_discovery"]
-      properties:
-        workflow_started: { type: "boolean" }
-        data_file_provided: { type: ["string", "null"] }
-        ready_for_discovery: { type: "boolean" }
-
-    state_writes:
-      - path: "workflow_started"
-        from: "output.workflow_started"
-      - path: "data_file_provided"
-        from: "output.data_file_provided"
-      - path: "ready_for_discovery"
-        from: "output.ready_for_discovery"
-
-    memory:
-      dredge: []
-      write: false
-
-    parallel:
-      spawn: false
-
-  # ═══════════════════════════════════════════════════════════════════
-  # PHASE 1: DISCOVERY
-  # ═══════════════════════════════════════════════════════════════════
-  - id: "discovery_find_files"
-    type: "flow"
+  # ──────────────────────────────────────────────────────────────────
+  # PHASE 1: Discovery
+  # ──────────────────────────────────────────────────────────────────
+  - id: "discovery"
     stage: "discovery"
-    purpose: "Find CSV/XLSX data files in directory"
+    purpose: "Find data files, gather client info, confirm business hours"
+    instructions_file: "../phone_to_present/workflow/phase1_discovery.md"
+    user_interaction: true
+    outputs:
+      - "client.name"
+      - "client.website"
+      - "data_file.path"
+      - "business_hours.*"
+    gate:
+      field: "discovery.confirmed"
+      on_pass: "ingestion"
+      on_fail: "discovery"  # Loop until confirmed
 
-    prompt: |
-      You are at PHASE 1.1 - Find Data Files
-
-      Search the current directory and subdirectories for:
-      - .csv files
-      - .xlsx files
-
-      List found files with filename, size, and modification date.
-      If multiple files found, prepare to ask user which to analyze.
-      If user already provided a file path, verify it exists.
-
-      PROVIDED FILE: {{state.data.data_file_provided}}
-
-      Output JSON:
-      {
-        "files_found": [{"path": "...", "size": "...", "modified": "..."}],
-        "file_count": N,
-        "needs_user_selection": true|false,
-        "selected_file": "<path if single file or pre-provided>"
-      }
-
-    output_schema:
-      type: "object"
-      required: ["files_found", "file_count"]
-      properties:
-        files_found: { type: "array" }
-        file_count: { type: "integer" }
-        needs_user_selection: { type: "boolean" }
-        selected_file: { type: ["string", "null"] }
-
-    state_writes:
-      - path: "files_found"
-        from: "output.files_found"
-      - path: "file_count"
-        from: "output.file_count"
-      - path: "selected_file"
-        from: "output.selected_file"
-      - path: "needs_user_selection"
-        from: "output.needs_user_selection"
-
-  - id: "discovery_file_selection"
-    type: "gate"
-    stage: "discovery"
-    purpose: "Gate to handle file selection if multiple files"
-
-    gate_config:
-      criteria:
-        - name: "single_file_or_selected"
-          check: "state.data.file_count == 1 or state.data.selected_file is not None"
-      on_pass: "discovery_metadata"
-      on_fail: "discovery_ask_file"
-      max_retries: 0
-
-  - id: "discovery_ask_file"
-    type: "flow"
-    stage: "discovery"
-    purpose: "Ask user to select which file to analyze"
-
-    prompt: |
-      Multiple data files found. Ask user:
-      "Which file(s) should I analyze?"
-
-      FILES: {{state.data.files_found}}
-
-      Present numbered options and wait for user response.
-
-      Output JSON:
-      {
-        "question_asked": true,
-        "options_presented": ["file1.csv", "file2.xlsx"],
-        "awaiting_response": true
-      }
-
-    on_complete:
-      - action: "ask_user"
-        question: "Which file should I analyze?"
-        options: "state.data.files_found"
-
-  - id: "discovery_metadata"
-    type: "flow"
-    stage: "discovery"
-    purpose: "Gather client metadata"
-
-    prompt: |
-      You are at PHASE 1.2 - Gather Client Metadata
-
-      Ask the user for (can combine questions):
-      - Client/Office Name
-      - Website URL
-      - Specialty (e.g., Optometry)
-      - Single or multi-location?
-      - Client tagline (optional)
-      - Lunch hours (if the office closes for lunch; otherwise "Unknown")
-
-      Output JSON:
-      {
-        "questions_to_ask": [
-          "What is the office/client name?",
-          "What is the website URL?",
-          "What is the specialty?",
-          "Is this single or multi-location?",
-          "Do you have lunch hours / a daily lunch closure? If yes, what times? (Otherwise reply 'Unknown'.)"
-        ],
-        "metadata_needed": ["CLIENT_NAME", "WEBSITE_URL", "SPECIALTY", "LOCATION_COUNT", "LUNCH_HOURS"]
-      }
-
-    output_schema:
-      type: "object"
-      properties:
-        questions_to_ask: { type: "array" }
-        metadata_needed: { type: "array" }
-
-  - id: "discovery_website_scrape"
-    type: "tributary"
-    stage: "discovery"
-    purpose: "Scrape website for business hours and timezone"
-
-    skill_name: "web_fetch"
-    skill_config:
-      url: "{{state.data.client.website_url}}"
-      extract:
-        - "business_hours"
-        - "timezone"
-        - "location_addresses"
-        - "phone_numbers"
-
-    on_error: "discovery_manual_metadata"
-
-    state_writes:
-      - path: "scraped_hours"
-        from: "skill_output.business_hours"
-      - path: "scraped_timezone"
-        from: "skill_output.timezone"
-
-  - id: "discovery_manual_metadata"
-    type: "flow"
-    stage: "discovery"
-    purpose: "Fallback: ask user for metadata if scraping failed"
-
-    prompt: |
-      Website scraping failed or incomplete. Ask user directly for:
-      - Business Hours (e.g., Mon-Fri 8am-5pm)
-      - Timezone (show IANA options)
-      - Location addresses
-      - Any holiday/temporary closures
-      - Lunch hours / daily lunch closure (or "Unknown")
-
-    on_complete:
-      - action: "ask_user"
-        questions:
-          - "What are your business hours?"
-          - "What timezone is the office in?"
-          - "Any holiday closures in the data period?"
-
-  - id: "discovery_closures"
-    type: "flow"
-    stage: "discovery"
-    purpose: "Ask about holiday/temporary closures"
-
-    prompt: |
-      Ask user explicitly about closures:
-      - "Do you have any holiday closures or temporary closure dates in this period?"
-      - "Do any locations have different hours or a different timezone?"
-
-      Store responses in:
-      - CLOSURES array (dates)
-      - LOCATION_OVERRIDES (if multi-location)
-
-  - id: "discovery_calculate_hours"
-    type: "flow"
-    stage: "discovery"
-    purpose: "Calculate weekly coverage hours from business hours"
-
-    prompt: |
-      Parse business hours to calculate:
-      - HOURS_PER_DAY for each day
-      - WEEKDAY_HOURS (Mon-Fri total)
-      - SATURDAY_HOURS
-      - SUNDAY_HOURS
-      - TOTAL_WEEKLY_HOURS
-      - REGULAR_HOURS (up to 40)
-      - OT_HOURS (over 40)
-      - HAS_SATURDAY, HAS_SUNDAY flags
-      - If LUNCH_HOURS is known: subtract lunch duration from applicable days
-
-      BUSINESS_HOURS: {{state.data.business_hours}}
-      LUNCH_HOURS: {{state.data.lunch_hours}}
-
-      Output JSON with all calculated values.
-
-    output_schema:
-      type: "object"
-      required: ["TOTAL_WEEKLY_HOURS", "REGULAR_HOURS", "OT_HOURS"]
-
-    state_writes:
-      - path: "coverage.total_weekly_hours"
-        from: "output.TOTAL_WEEKLY_HOURS"
-      - path: "coverage.regular_hours"
-        from: "output.REGULAR_HOURS"
-      - path: "coverage.ot_hours"
-        from: "output.OT_HOURS"
-      - path: "coverage.has_saturday"
-        from: "output.HAS_SATURDAY"
-      - path: "coverage.has_sunday"
-        from: "output.HAS_SUNDAY"
-      - path: "coverage.saturday_hours"
-        from: "output.SATURDAY_HOURS"
-      - path: "coverage.sunday_hours"
-        from: "output.SUNDAY_HOURS"
-
-  - id: "discovery_confirmation"
-    type: "gate"
-    stage: "discovery"
-    purpose: "Confirm metadata with user before proceeding"
-
-    gate_config:
-      criteria:
-        - name: "timezone_confirmed"
-          check: "state.data.confirmations.timezone in ['confirmed', 'assumed']"
-        - name: "business_hours_confirmed"
-          check: "state.data.confirmations.business_hours in ['confirmed', 'assumed']"
-      on_pass: "ingestion_identify_format"
-      on_fail: "discovery_metadata"
-      max_retries: 2
-
-    prompt: |
-      Present extracted metadata to user for confirmation:
-
-      CLIENT: {{state.data.client.name}}
-      TIMEZONE: {{state.data.timezone}}
-      BUSINESS HOURS: {{state.data.business_hours}}
-      CLOSURES: {{state.data.closures}}
-
-      Ask: "Is this information correct?"
-
-      Record confirmations:
-      - timezone: confirmed|assumed
-      - business_hours: confirmed|assumed
-      - closures: confirmed|unconfirmed
-
-  - id: "sediment_discovery"
-    type: "sediment"
-    stage: "discovery"
-    purpose: "Commit client metadata to memory"
-
-    memory:
-      write: true
-      source: "state.data.client"
-      require_triplets: false
-      conflict_action: "overwrite"
-
-  # ═══════════════════════════════════════════════════════════════════
-  # PHASE 2: DATA INGESTION
-  # ═══════════════════════════════════════════════════════════════════
-  - id: "ingestion_identify_format"
-    type: "flow"
+  # ──────────────────────────────────────────────────────────────────
+  # PHASE 2: Ingestion
+  # ──────────────────────────────────────────────────────────────────
+  - id: "ingestion"
     stage: "ingestion"
-    purpose: "Identify phone system export format"
+    purpose: "Standardize columns, normalize dispositions, quality checks"
+    instructions_file: "../phone_to_present/workflow/phase2_ingestion.md"
+    code_required: true
+    outputs:
+      - "data_file.gold_path"
+      - "ingestion.row_count"
+      - "ingestion.quality_score"
+    gate:
+      field: "ingestion.quality_passed"
+      on_pass: "analysis"
+      on_fail: "ingestion"  # Fix and retry
 
-    prompt: |
-      You are at PHASE 2.1 - Identify Source Format
-
-      Read the selected data file and identify the phone system export format.
-      Look for column patterns:
-      - Standard Export: Direction, Result, Duration columns
-      - Timestamped: call_type, state, duration_ms
-      - Detailed: Call Direction, Call Result, Talk Time
-      - Basic: Status, Duration, phone numbers
-      - Minimal: timestamp, duration, phone numbers only
-
-      FILE: {{state.data.selected_file}}
-
-      Output JSON:
-      {
-        "format_type": "<detected type>",
-        "columns_found": ["col1", "col2", ...],
-        "row_count": N,
-        "data_source": "Phone Provider Export"
-      }
-
-  - id: "ingestion_column_mapping"
-    type: "flow"
-    stage: "ingestion"
-    purpose: "Map raw columns to standard schema"
-
-    prompt: |
-      You are at PHASE 2.2 - Column Mapping
-
-      Map raw columns to standard schema:
-      - timestamp (REQUIRED): start_time, date_time, call_start, timestamp
-      - direction (REQUIRED): direction, call_type, type
-      - duration (REQUIRED): duration, talk_time, length, seconds
-      - disposition: disposition, result, status, outcome
-      - phone_from: from, caller, calling_number
-      - phone_to: to, called, dialed_number
-      - location: location, office, site, branch
-
-      COLUMNS FOUND: {{state.data.columns_found}}
-
-      If ambiguous, list candidates and prepare to ask user.
-
-      Output JSON:
-      {
-        "column_mapping": {
-          "timestamp": "<column>",
-          "direction": "<column>",
-          "duration": "<column>",
-          "disposition": "<column or null>",
-          "location": "<column or null>"
-        },
-        "mapping_confidence": "high|medium|low",
-        "ambiguous_columns": [],
-        "missing_required": []
-      }
-
-    gate_config:
-      criteria:
-        - name: "required_columns_found"
-          check: "len(state.data.missing_required) == 0"
-      on_fail: "ingestion_ask_columns"
-
-  - id: "ingestion_ask_columns"
-    type: "flow"
-    stage: "ingestion"
-    purpose: "Ask user to clarify ambiguous column mappings"
-
-    prompt: |
-      Column mapping is ambiguous. Ask user:
-      "Which column represents [field]?"
-
-      AMBIGUOUS: {{state.data.ambiguous_columns}}
-      MISSING: {{state.data.missing_required}}
-
-    on_complete:
-      - action: "ask_user"
-        questions: "state.data.ambiguous_columns"
-
-  - id: "ingestion_normalize_direction"
-    type: "flow"
-    stage: "ingestion"
-    purpose: "Normalize direction column values"
-
-    prompt: |
-      Normalize the direction column using mapping:
-      - inbound, incoming, in, received -> 'inbound'
-      - outbound, outgoing, out, placed -> 'outbound'
-      - internal, transfer -> 'internal'
-      - else -> 'unknown'
-
-      If direction column missing, infer from phone numbers:
-      - phone_to matches client number -> inbound
-      - phone_from matches client number -> outbound
-
-      Track DIRECTION_INFERRED and DIRECTION_CONFIDENCE.
-
-  - id: "ingestion_normalize_disposition"
-    type: "flow"
-    stage: "ingestion"
-    purpose: "Normalize disposition column values"
-
-    prompt: |
-      Normalize disposition using mapping:
-      - answered, completed, connected, talking, success -> 'answered'
-      - missed, no answer, unanswered, rna -> 'missed'
-      - voicemail, vm, left message -> 'voicemail'
-      - abandoned, hang up, hungup -> 'abandoned'
-      - redirect, redirected, forwarded, transferred -> 'redirected'
-
-      Generate raw value frequency table for review.
-      Flag if unknown_pct > 1% for user confirmation.
-
-      If no disposition column, infer from duration:
-      - duration <= 0 -> 'missed' (0.7 confidence)
-      - duration <= 30 -> 'missed' (0.6 confidence)
-      - duration > 30 -> 'answered' (0.7 confidence)
-
-  - id: "ingestion_disposition_review"
-    type: "gate"
-    stage: "ingestion"
-    purpose: "Review disposition mapping semantics with user"
-
-    gate_config:
-      criteria:
-        - name: "low_unknown_rate"
-          check: "state.data.pct_unknown_disposition <= 1"
-        - name: "disposition_confirmed"
-          check: "state.data.confirmations.disposition_mapping == 'confirmed'"
-      on_pass: "ingestion_add_context"
-      on_fail: "ingestion_refine_disposition"
-      max_retries: 2
-
-    prompt: |
-      RAW DISPOSITION VALUES:
-      {{state.data.raw_disposition_counts}}
-
-      Unknown rate: {{state.data.pct_unknown_disposition}}%
-
-      Confirm with user:
-      - Which values should count as ANSWERED?
-      - Which should count as MISSED/ABANDONED?
-      - Which should be excluded or treated as UNKNOWN?
-
-  - id: "ingestion_refine_disposition"
-    type: "flow"
-    stage: "ingestion"
-    purpose: "Refine disposition mapping based on user input"
-
-    prompt: |
-      User needs to clarify disposition semantics.
-      Present the raw value frequency table and ask for clarification.
-
-  - id: "ingestion_add_context"
-    type: "flow"
-    stage: "ingestion"
-    purpose: "Add business context flags to each call"
-
-    prompt: |
-      Add business context flags to each call:
-      - is_open_hours: during business hours
-      - is_lunch_window: during lunch (if known)
-      - is_after_hours: outside business hours (not weekend)
-      - is_weekend: Saturday or Sunday
-      - is_closure_day: in CLOSURES list
-      - day_of_week: Mon, Tue, etc.
-      - hour_local: 0-23
-
-      BUSINESS_HOURS: {{state.data.business_hours}}
-      CLOSURES: {{state.data.closures}}
-      TIMEZONE: {{state.data.timezone}}
-
-  - id: "ingestion_create_gold_table"
-    type: "flow"
-    stage: "ingestion"
-    purpose: "Create standardized gold table"
-
-    prompt: |
-      Transform raw data into gold table with schema:
-      - source_system, raw_call_id, client_id, location_id
-      - direction, start_time_raw, start_time_utc, start_time_local
-      - end_time_local, date_local, day_of_week, hour_local
-      - duration_raw, duration_seconds, duration_minutes
-      - disposition_raw, disposition_normalized, disposition_confidence
-      - is_open_hours, is_lunch_window, is_after_hours, is_weekend
-
-      Save to: output/<client_slug>/gold_calls.csv
-
-  - id: "ingestion_quality_checks"
-    type: "flow"
-    stage: "ingestion"
-    purpose: "Run data quality checks"
-
-    prompt: |
-      Run quality checks and generate report:
-      - Completeness: missing timestamp, direction, duration, disposition
-      - Validity: zero/negative/excessive duration, future/ancient timestamps
-      - Disposition quality: counts by type, pct_unknown
-      - Direction quality: counts by type, pct_unknown
-      - Duplicates: found and removed
-      - Date range: min, max, days_span, weeks_span
-
-      Quality thresholds:
-      - Unknown disposition >10% -> WARNING, >25% -> CRITICAL
-      - Unknown direction >5% -> WARNING, >15% -> CRITICAL
-      - Zero duration >5% -> WARNING, >15% -> CRITICAL
-
-      Calculate QUALITY_GRADE (A/B/C/D/F).
-
-    output_schema:
-      type: "object"
-      required: ["quality_report", "quality_grade"]
-
-    state_writes:
-      - path: "quality_report"
-        from: "output.quality_report"
-      - path: "quality_grade"
-        from: "output.quality_grade"
-
-  - id: "ingestion_quality_gate"
-    type: "gate"
-    stage: "ingestion"
-    purpose: "Quality gate - verify data quality acceptable"
-
-    gate_config:
-      criteria:
-        - name: "data_quality_acceptable"
-          check: "state.data.quality_grade in ['A', 'B', 'C']"
-        - name: "has_inbound_calls"
-          check: "state.data.quality_report.direction_inbound > 0"
-      on_pass: "analysis_filter_inbound"
-      on_fail: "ingestion_quality_escalate"
-      max_retries: 0
-
-  - id: "ingestion_quality_escalate"
-    type: "flow"
-    stage: "ingestion"
-    purpose: "Report quality issues and ask user whether to continue"
-
-    prompt: |
-      Data quality issues detected:
-      {{state.data.quality_report}}
-
-      Ask user: "Data quality is {{state.data.quality_grade}}. Continue anyway? (Y/N)"
-
-    on_complete:
-      - action: "ask_user"
-        question: "Data quality issues found. Continue anyway?"
-
-  # ═══════════════════════════════════════════════════════════════════
-  # PHASE 3: CORE ANALYSIS
-  # ═══════════════════════════════════════════════════════════════════
-  - id: "analysis_filter_inbound"
-    type: "flow"
+  # ──────────────────────────────────────────────────────────────────
+  # PHASE 3: Analysis
+  # ──────────────────────────────────────────────────────────────────
+  - id: "analysis"
     stage: "analysis"
-    purpose: "Filter to inbound calls and separate open/closed hours"
+    purpose: "Calculate KPIs from OPEN HOURS inbound calls only"
+    instructions_file: "../phone_to_present/workflow/phase3_analysis.md"
+    code_required: true
+    critical_rule: "All metrics computed from OPEN HOURS only"
+    outputs:
+      - "kpis.ANSWER_RATE"
+      - "kpis.MISS_RATE"
+      - "kpis.GRADE"
+      - "kpis.MISSED_PER_WEEK"
+    gate:
+      field: "analysis.kpis_computed"
+      on_pass: "concurrency"
+      on_fail: "analysis"
 
-    prompt: |
-      You are at PHASE 3.1 - Filter to Inbound Calls
-
-      CRITICAL: All main metrics use OPEN HOURS data only.
-
-      1. Filter to direction == 'inbound'
-      2. Separate into open_hours_df (is_open_hours == True) and closed_hours_df
-      3. Calculate TOTAL_INBOUND (open hours), TOTAL_CLOSED, OPEN_PCT, CLOSED_PCT
-
-      If TOTAL_INBOUND == 0: CRITICAL ERROR - stop
-
-      Output:
-      {
-        "TOTAL_INBOUND_ALL": N,
-        "TOTAL_INBOUND": N,  # Open hours only - PRIMARY
-        "TOTAL_CLOSED": N,
-        "TOTAL_OUTBOUND": N,
-        "TOTAL_INTERNAL": N,
-        "OPEN_PCT": X.X,
-        "CLOSED_PCT": X.X
-      }
-
-  - id: "analysis_primary_metrics"
-    type: "flow"
-    stage: "analysis"
-    purpose: "Calculate primary metrics from OPEN HOURS data"
-
-    prompt: |
-      You are at PHASE 3.2 - Primary Metrics (OPEN HOURS ONLY)
-
-      Calculate from open_hours_df:
-      - Count by disposition: answered, missed, voicemail, abandoned, redirected, unknown
-      - ANSWER_RATE = answered / known_calls * 100
-      - MISS_RATE = (missed + abandoned) / known_calls * 100
-      - VOICEMAIL_RATE = voicemail / known_calls * 100
-      - MISS_RATIO = 100 / MISS_RATE (or "N/A" if 0)
-
-      Weekly metrics:
-      - MISSED_CALLS_WEEK = (missed + abandoned) / WEEKS_IN_RANGE
-      - ANSWERED_CALLS_WEEK = answered / WEEKS_IN_RANGE
-      - INBOUND_CALLS_WEEK = TOTAL_INBOUND / WEEKS_IN_RANGE
-
-      Store:
-      - OPEN_ANSWERED = answered
-      - OPEN_MISSED = missed + abandoned
-      - OPEN_VOICEMAIL = voicemail
-
-  - id: "analysis_grade_assignment"
-    type: "flow"
-    stage: "analysis"
-    purpose: "Assign letter grade based on open hours answer rate"
-
-    prompt: |
-      Assign grade based on ANSWER_RATE:
-      - A: 95%+ (Excellent) - GREEN
-      - B: 90-94% (Good) - ORANGE
-      - C: 80-89% (Needs Improvement) - ORANGE
-      - D: 70-79% (Poor) - RED
-      - F: <70% (Critical) - RED
-
-      Color codes:
-      - A: #10B981 (green)
-      - B/C: #F97316 (orange)
-      - D/F: #E63946 (red)
-
-      Output: GRADE, GRADE_DESCRIPTION, GRADE_BG_COLOR, GRADE_TEXT_COLOR
-
-  - id: "analysis_closed_hours"
-    type: "flow"
-    stage: "analysis"
-    purpose: "Calculate closed hours metrics (secondary/reference only)"
-
-    prompt: |
-      Calculate CLOSED HOURS metrics (for reference, NOT primary):
-      - CLOSED_ANSWERED, CLOSED_MISSED, CLOSED_VOICEMAIL
-      - CLOSED_ANSWER_RATE, CLOSED_MISS_RATE
-
-      NOTE: Closed hours misses are expected (no staff available).
-
-  - id: "analysis_duration_stats"
-    type: "flow"
-    stage: "analysis"
-    purpose: "Calculate call duration statistics from open hours"
-
-    prompt: |
-      Calculate duration stats from OPEN HOURS answered calls:
-      - AVG_DURATION_SECONDS, MEDIAN_DURATION_SECONDS
-      - AVG_DURATION_MINUTES, MEDIAN_DURATION_MINUTES
-      - AHT_USED = max(AVG_DURATION_MINUTES, 3.5) for Monte Carlo
-
-  - id: "analysis_daily_volume"
-    type: "flow"
-    stage: "analysis"
-    purpose: "Analyze call patterns by day of week (OPEN HOURS)"
-
-    prompt: |
-      Group OPEN HOURS data by day of week:
-      - Day order: Mon, Tue, Wed, Thu, Fri, Sat, Sun
-      - Calculate total, answered, missed per day
-      - Calculate miss_rate per day
-      - Find WORST_DAY and WORST_DAY_RATE
-
-      Store DAILY_VOLUME and DAILY_MISS_RATE dictionaries.
-
-  - id: "analysis_hourly_volume"
-    type: "flow"
-    stage: "analysis"
-    purpose: "Analyze call patterns by hour (OPEN HOURS)"
-
-    prompt: |
-      Group OPEN HOURS data by hour:
-      - Calculate total, answered, missed per hour
-      - Calculate miss_rate per hour
-      - Find PEAK_HOUR and PEAK_HOUR_VOLUME
-
-      Store HOURLY_VOLUME and HOURLY_MISS_RATE dictionaries.
-
-  - id: "analysis_pain_windows"
-    type: "flow"
-    stage: "analysis"
-    purpose: "Build 2D pain windows matrix (OPEN HOURS)"
-
-    prompt: |
-      Build hour x day matrix for heatmap (OPEN HOURS only):
-      - Rows: hours (business hours range, e.g., 8-17)
-      - Columns: days (Mon-Sun)
-      - Values: miss rate percentage
-
-      Store PAIN_WINDOWS_MATRIX for chart generation.
-
-  - id: "analysis_worst_hours"
-    type: "flow"
-    stage: "analysis"
-    purpose: "Identify 3 worst performing time slots"
-
-    prompt: |
-      Find top 3 worst hour/day combinations:
-      - Minimum 5 calls to qualify (MIN_CALLS_FOR_WORST)
-      - Sort by miss_rate descending
-
-      Output:
-      - WORST_HOUR_1, WORST_HOUR_1_RATE
-      - WORST_HOUR_2, WORST_HOUR_2_RATE
-      - WORST_HOUR_3, WORST_HOUR_3_RATE
-
-      If no missed calls: WORST_HOUR_1 = "None - Great performance!"
-
-  - id: "analysis_location"
-    type: "flow"
-    stage: "analysis"
-    purpose: "Location analysis if multi-location"
-
-    guard: "state.data.client.location_count > 1"
-
-    prompt: |
-      If multi-location, calculate per-location stats:
-      - Total calls, answered, answer_rate per location
-
-      Store LOCATION_STATS dictionary.
-
-  # ═══════════════════════════════════════════════════════════════════
-  # PHASE 4: CONCURRENCY & FTE
-  # ═══════════════════════════════════════════════════════════════════
-  - id: "concurrency_triggered"
-    type: "flow"
+  # ──────────────────────────────────────────────────────────────────
+  # PHASE 4: Concurrency & FTE
+  # ──────────────────────────────────────────────────────────────────
+  - id: "concurrency"
     stage: "concurrency"
-    purpose: "Calculate triggered concurrency (OPEN HOURS)"
+    purpose: "Calculate BASE_FTE via CDF and Monte Carlo, reconcile"
+    instructions_file: "../phone_to_present/workflow/phase4_concurrency.md"
+    code_required: true
+    code_pattern: |
+      # MUST write and execute Python:
+      # 1. CDF at 90% coverage (exclude level 0)
+      # 2. Monte Carlo simulation (deterministic seed)
+      # 3. Verify |CDF_FTE - MC_FTE| <= 1.0
+    outputs:
+      - "concurrency.BASE_FTE"
+      - "concurrency.MC_FTE_90"
+      - "concurrency.SHRINKAGE_FTE"
+    stop_condition:
+      check: "abs(BASE_FTE - MC_FTE_90) > 1.0"
+      action: "STOP and reconcile"
+    gate:
+      field: "concurrency.fte_reconciled"
+      on_pass: "pricing"
+      on_fail: "blocked"
 
-    prompt: |
-      You are at PHASE 4.1 - Triggered Concurrency
-
-      For each call arrival in OPEN HOURS data:
-      - Count how many other calls are active at arrival time
-      - A call is active if: start <= arrival_time < end
-
-      Build TRIGGERED_CONCURRENCY distribution: {level: count}
-
-      NOTE: O(n^2) algorithm - consider optimization for >50k calls.
-
-  - id: "concurrency_time_weighted"
-    type: "flow"
-    stage: "concurrency"
-    purpose: "Calculate time-weighted concurrency (OPEN HOURS)"
-
-    prompt: |
-      You are at PHASE 4.2 - Time-Weighted Concurrency
-
-      Sweep-line algorithm:
-      1. Create events: +1 at call start, -1 at call end
-      2. Sort by time (ends before starts on ties)
-      3. Walk through, track current level
-      4. Accumulate time at each level
-
-      Build TIME_WEIGHTED_CONCURRENCY: {level: seconds}
-
-  - id: "concurrency_summary"
-    type: "flow"
-    stage: "concurrency"
-    purpose: "Calculate concurrency summary statistics"
-
-    prompt: |
-      Calculate summary stats:
-      - MAX_CONCURRENCY: highest level observed
-      - AVG_CONCURRENCY: weighted average at arrivals
-      - PERCENTILE_90_CONCURRENCY: level covering 90% of arrivals
-      - UTILIZATION_PCT: % time with at least 1 call
-
-  - id: "concurrency_monte_carlo"
-    type: "flow"
-    stage: "concurrency"
-    purpose: "Run Monte Carlo simulation for FTE"
-
-    prompt: |
-      You are at PHASE 4.4 - Monte Carlo Simulation
-
-      Configuration:
-      - NUM_SIMULATIONS = 1000
-      - TARGET_COVERAGE = 0.90
-      - AHT_LAMBDA = 1 / (AHT_USED * 60)
-      - Use deterministic seed from stable dataset fingerprint (sha256 of: source filename, row count, min/max local timestamps, AHT_USED, TARGET_COVERAGE, NUM_SIMULATIONS)
-      - Store MC_SEED + simulation params in the analysis manifest for repeatability
-
-      For each simulation:
-      1. Keep real arrival times
-      2. Simulate durations from exponential distribution
-      3. Calculate time-weighted concurrency
-      4. Find FTE covering target % of time (excluding level 0)
-
-      Output: MC_RESULTS with fte_mean, fte_median, fte_90th, fte_max
-
-  - id: "concurrency_fte_calculation"
-    type: "flow"
-    stage: "concurrency"
-    purpose: "Calculate BASE_FTE and SHRINKAGE_FTE"
-
-    prompt: |
-      You are at PHASE 4.5 - FTE Calculation
-
-      BASE_FTE = CDF at 90% coverage from time-weighted concurrency
-      - Exclude level 0 (no calls = no staffing needed)
-      - Find level where cumulative coverage >= 90%
-      - Minimum BASE_FTE = 1.0
-
-      SHRINKAGE_FTE = BASE_FTE / 0.80
-      - 20% shrinkage for breaks, training, admin, PTO
-      - Minimum SHRINKAGE_FTE = 1.25
-
-      Round to 2 decimal places.
-
-  - id: "concurrency_fte_verification"
-    type: "gate"
-    stage: "concurrency"
-    purpose: "Verify FTE calculations via Monte Carlo reconciliation"
-
-    gate_config:
-      criteria:
-        - name: "fte_reconciled"
-          check: "abs(state.data.MC_FTE_90 - state.data.BASE_FTE) <= 1.0"
-      on_pass: "concurrency_pilot_options"
-      on_fail: "concurrency_fte_escalate"
-      max_retries: 0
-
-    prompt: |
-      VERIFICATION:
-      - BASE_FTE (CDF): {{state.data.BASE_FTE}}
-      - MC_FTE_90 (Monte Carlo): {{state.data.MC_FTE_90}}
-      - FTE_DIFF: {{state.data.FTE_DIFF}}
-
-      If FTE_DIFF > 1.0: FAIL - re-check business hours, timezone, AHT.
-
-  - id: "concurrency_fte_escalate"
-    type: "flow"
-    stage: "concurrency"
-    purpose: "Escalate FTE verification failure"
-
-    prompt: |
-      FTE VERIFICATION FAILED:
-      - CDF FTE: {{state.data.BASE_FTE}}
-      - Monte Carlo FTE: {{state.data.MC_FTE_90}}
-      - Difference: {{state.data.FTE_DIFF}}
-
-      Re-check:
-      1. Business hours/timezone correct?
-      2. AHT_USED reasonable?
-      3. Duration parsing correct?
-
-    on_complete:
-      - action: "escalate"
-        reason: "FTE verification failed - manual review required"
-
-  - id: "concurrency_pilot_options"
-    type: "flow"
-    stage: "concurrency"
-    purpose: "Show staffing ladder and ask about pilot program"
-
-    prompt: |
-      Show staffing ladder:
-      - Base HC (integer staffing level)
-      - Shrinkage HC (Base HC adjusted)
-      - Answer Rate at each level
-
-      Ask user:
-      1. Include a Pilot Program option in presentation?
-      2. If yes: which staffing level and calculation basis (base vs shrinkage)?
-
-      Store in state:
-      - pilot.enabled (bool)
-      - pilot.level (Base HC integer)
-      - pilot.calculation ("base"|"shrinkage")
-      - pilot.answer_rate (arrival-coverage answer rate at the selected level)
-
-      If pilot included:
-      - Add pilot row to investment options table
-      - Add "World Class Answer Rate" under Inbound only
-
-  - id: "concurrency_miss_analysis"
-    type: "flow"
-    stage: "concurrency"
-    purpose: "Analyze process vs capacity miss causes"
-
-    prompt: |
-      You are at PHASE 4.6 - Process vs Capacity Analysis
-
-      For each missed call in OPEN HOURS:
-      - If concurrency = 1: PROCESS issue (should have answered)
-      - If concurrency > 1: CAPACITY issue (overwhelmed)
-
-      Calculate PROCESS_MISS_PCT and CAPACITY_MISS_PCT.
-
-      This is a KEY INSIGHT for the presentation.
-
-  # ═══════════════════════════════════════════════════════════════════
-  # PHASE 5: PRICING
-  # ═══════════════════════════════════════════════════════════════════
-  - id: "pricing_inbound"
-    type: "flow"
+  # ──────────────────────────────────────────────────────────────────
+  # PHASE 5: Pricing
+  # ──────────────────────────────────────────────────────────────────
+  - id: "pricing"
     stage: "pricing"
-    purpose: "Calculate MyBCAT Inbound pricing"
+    purpose: "Calculate all pricing options, apply minimums"
+    instructions_file: "../phone_to_present/workflow/phase5_pricing.md"
+    code_required: true
+    code_pattern: |
+      # MUST write and execute Python:
+      # 1. Calculate INBOUND = BASE_FTE * $480/week
+      # 2. Calculate RHC = SHRINKAGE_FTE * $480/week
+      # 3. Apply minimums (Pilot: $600, Inbound/RHC: $480)
+      # 4. Log any adjustments
+    outputs:
+      - "pricing.INBOUND_WEEKLY"
+      - "pricing.RHC_WEEKLY"
+      - "pricing.PILOT_WEEKLY"
+      - "pricing.HIRE_WEEKLY"
+    stop_condition:
+      check: "calculated < minimum"
+      action: "Apply minimum, log adjustment, confirm with user"
+    gate:
+      field: "pricing.verified"
+      on_pass: "charts"
+      on_fail: "pricing"
 
-    prompt: |
-      You are at PHASE 5.2 - MyBCAT Inbound Pricing
-
-      Inbound uses BASE_FTE (phones-only coverage):
-      - INBOUND_BASE = $480/week x BASE_FTE
-      - INBOUND_OT = $18/hr x BASE_FTE x OT_HOURS
-      - INBOUND_WEEKEND = $25 x BASE_FTE per weekend day
-
-      INBOUND_WEEKLY = round(INBOUND_BASE + INBOUND_OT + INBOUND_WEEKEND, 2)
-      INBOUND_MONTHLY = round(INBOUND_WEEKLY x 4.33)
-      INBOUND_ANNUAL = INBOUND_MONTHLY x 12
-
-  - id: "pricing_rhc"
-    type: "flow"
-    stage: "pricing"
-    purpose: "Calculate MyBCAT RHC pricing"
-
-    prompt: |
-      You are at PHASE 5.3 - MyBCAT RHC Pricing
-
-      RHC uses SHRINKAGE_FTE for base (includes shrinkage buffer):
-      - RHC_BASE = $480/week x SHRINKAGE_FTE
-      - RHC_OT = $18/hr x BASE_FTE x OT_HOURS (OT uses BASE_FTE)
-      - RHC_WEEKEND = $25 x BASE_FTE per weekend day
-
-      RHC_WEEKLY = round(RHC_BASE + RHC_OT + RHC_WEEKEND, 2)
-      RHC_MONTHLY = round(RHC_WEEKLY x 4.33)
-      RHC_ANNUAL = RHC_MONTHLY x 12
-
-  - id: "pricing_rhc_growth"
-    type: "flow"
-    stage: "pricing"
-    purpose: "Calculate MyBCAT RHC+ Growth pricing"
-
-    prompt: |
-      RHC+ Growth = RHC + $500/week add-on + 1x/month consulting
-
-      RHC_GROWTH_WEEKLY = round(RHC_WEEKLY + 500, 2)
-      RHC_GROWTH_MONTHLY = round(RHC_GROWTH_WEEKLY x 4.33)
-      RHC_GROWTH_ANNUAL = RHC_GROWTH_MONTHLY x 12
-
-  - id: "pricing_inhouse"
-    type: "flow"
-    stage: "pricing"
-    purpose: "Calculate In-House hiring cost"
-
-    prompt: |
-      You are at PHASE 5.4 - In-House Pricing
-
-      In-House uses SHRINKAGE_FTE at higher rates:
-      - HIRE_BASE = $960/week x SHRINKAGE_FTE
-      - HIRE_OT = $36/hr x BASE_FTE x OT_HOURS
-      - HIRE_WEEKEND = $25 x BASE_FTE per weekend day
-
-      HIRE_WEEKLY = round(HIRE_BASE + HIRE_OT + HIRE_WEEKEND, 2)
-      HIRE_MONTHLY = round(HIRE_WEEKLY x 4.33)
-      HIRE_ANNUAL = HIRE_MONTHLY x 12
-
-  - id: "pricing_pilot"
-    type: "flow"
-    stage: "pricing"
-    purpose: "Optional: calculate Pilot Program pricing (Inbound Answering)"
-
-    prompt: |
-      If a Pilot Program is enabled (Inbound Answering only), compute pilot pricing using the same internal model used in `phone_to_present/scripts/run_pipeline.py`.
-
-      Inputs:
-      - PILOT_LEVEL (Base HC integer): {{state.data.pilot.level}}
-      - PILOT_CALCULATION: {{state.data.pilot.calculation}}  # base|shrinkage
-      - SHRINKAGE_PCT: {{state.data.SHRINKAGE_PCT}} (default 20) -> SHRINK_FACTOR = 1 - (SHRINKAGE_PCT / 100)
-      - OT_HOURS: {{state.data.coverage.ot_hours}}
-      - HAS_SATURDAY: {{state.data.coverage.has_saturday}}
-      - HAS_SUNDAY: {{state.data.coverage.has_sunday}}
-
-      Constants:
-      - MYBCAT_WEEKLY_RATE = 480
-      - MYBCAT_OT_HOURLY = 18
-      - WEEKEND_PREMIUM_PER_DAY = 25
-
-      weekend_days = int(HAS_SATURDAY) + int(HAS_SUNDAY)
-
-      pilot_fte_total =
-        PILOT_LEVEL
-        if PILOT_CALCULATION == "base"
-        else max(PILOT_LEVEL / SHRINK_FACTOR, 1.25)
-
-      PILOT_BASE = MYBCAT_WEEKLY_RATE * pilot_fte_total
-      PILOT_OT = MYBCAT_OT_HOURLY * PILOT_LEVEL * OT_HOURS
-      PILOT_WEEKEND = WEEKEND_PREMIUM_PER_DAY * PILOT_LEVEL * weekend_days
-
-      PILOT_WEEKLY = PILOT_BASE + PILOT_OT + PILOT_WEEKEND
-      PILOT_MONTHLY = PILOT_WEEKLY * 4.33
-      PILOT_ANNUAL = PILOT_MONTHLY * 12
-
-      Also store:
-      - PILOT_ANSWER_RATE (from staffing ladder / arrival-coverage at this Base HC level)
-
-      Deck behavior:
-      - If pilot enabled, populate `PILOT_INVESTMENT_ROW` with the newline-prefixed markdown row (see pipeline).
-      - If no pilot, `PILOT_INVESTMENT_ROW` and `WORLD_CLASS_ANSWER_RATE_LINE` must be empty strings.
-
-  - id: "pricing_revenue_leak"
-    type: "flow"
-    stage: "pricing"
-    purpose: "Calculate estimated revenue leak"
-
-    prompt: |
-      Calculate revenue leak (conservative estimate; open-hours misses only).
-
-      Assumptions (percent inputs; override per client if known):
-      - APPT_SEEKING_PCT = 60
-      - NEW_PATIENT_PCT = 35
-      - CONVERSION_PCT = 15
-      - AVG_APPT_VALUE = 500
-
-      Weekly leak:
-      REVENUE_LEAK_WEEKLY = MISSED_CALLS_WEEK
-                          x (APPT_SEEKING_PCT / 100)
-                          x (NEW_PATIENT_PCT / 100)
-                          x (CONVERSION_PCT / 100)
-                          x AVG_APPT_VALUE
-
-      Conversions:
-      REVENUE_LEAK_MONTHLY = REVENUE_LEAK_WEEKLY x 4.33
-      REVENUE_LEAK_ANNUAL = REVENUE_LEAK_MONTHLY x 12
-
-  - id: "pricing_savings_roi"
-    type: "flow"
-    stage: "pricing"
-    purpose: "Calculate savings and ROI"
-
-    prompt: |
-      Calculate savings vs in-house (Phase 5.8):
-      - INBOUND_SAVINGS_WEEKLY = HIRE_WEEKLY - INBOUND_WEEKLY
-      - INBOUND_SAVINGS_MONTHLY = HIRE_MONTHLY - INBOUND_MONTHLY
-      - INBOUND_SAVINGS_ANNUAL = HIRE_ANNUAL - INBOUND_ANNUAL
-      - INBOUND_SAVINGS_PCT = round((INBOUND_SAVINGS_ANNUAL / HIRE_ANNUAL) * 100, 1) if HIRE_ANNUAL > 0 else 0
-
-      - RHC_SAVINGS_WEEKLY = HIRE_WEEKLY - RHC_WEEKLY
-      - RHC_SAVINGS_MONTHLY = HIRE_MONTHLY - RHC_MONTHLY
-      - RHC_SAVINGS_ANNUAL = HIRE_ANNUAL - RHC_ANNUAL
-      - RHC_SAVINGS_PCT = round((RHC_SAVINGS_ANNUAL / HIRE_ANNUAL) * 100, 1) if HIRE_ANNUAL > 0 else 0
-
-      - RHC_GROWTH_SAVINGS_WEEKLY = HIRE_WEEKLY - RHC_GROWTH_WEEKLY
-      - RHC_GROWTH_SAVINGS_MONTHLY = HIRE_MONTHLY - RHC_GROWTH_MONTHLY
-      - RHC_GROWTH_SAVINGS_ANNUAL = HIRE_ANNUAL - RHC_GROWTH_ANNUAL
-      - RHC_GROWTH_SAVINGS_PCT = round((RHC_GROWTH_SAVINGS_ANNUAL / HIRE_ANNUAL) * 100, 1) if HIRE_ANNUAL > 0 else 0
-
-      If Pilot is enabled:
-      - PILOT_SAVINGS_WEEKLY = HIRE_WEEKLY - PILOT_WEEKLY
-      - PILOT_SAVINGS_MONTHLY = HIRE_MONTHLY - PILOT_MONTHLY
-      - PILOT_SAVINGS_ANNUAL = HIRE_ANNUAL - PILOT_ANNUAL
-      - PILOT_SAVINGS_PCT = round((PILOT_SAVINGS_ANNUAL / HIRE_ANNUAL) * 100, 1) if HIRE_ANNUAL > 0 else 0
-
-      Calculate ROI (Phase 5.6):
-      - ROI = (REVENUE_LEAK_ANNUAL - COST_ANNUAL) / COST_ANNUAL x 100 (negative values allowed)
-      - Guard: if COST_ANNUAL == 0, ROI = 0
-      - INBOUND_ROI = round(((REVENUE_LEAK_ANNUAL - INBOUND_ANNUAL) / INBOUND_ANNUAL) * 100, 1) if INBOUND_ANNUAL > 0 else 0
-      - RHC_ROI = round(((REVENUE_LEAK_ANNUAL - RHC_ANNUAL) / RHC_ANNUAL) * 100, 1) if RHC_ANNUAL > 0 else 0
-      - HIRE_ROI = round(((REVENUE_LEAK_ANNUAL - HIRE_ANNUAL) / HIRE_ANNUAL) * 100, 1) if HIRE_ANNUAL > 0 else 0
-
-      Calculate breakeven (Phase 5.9):
-      - Use AVG_PATIENT_VALUE (default 500 if unknown; separate from AVG_APPT_VALUE used in revenue leak)
-      - INBOUND_BREAKEVEN = round(INBOUND_ANNUAL / AVG_PATIENT_VALUE)
-      - RHC_BREAKEVEN = round(RHC_ANNUAL / AVG_PATIENT_VALUE)
-
-      - If MISSED_CALLS_WEEK * 52 > 0:
-          - INBOUND_BREAKEVEN_PCT = round((INBOUND_BREAKEVEN / (MISSED_CALLS_WEEK * 52)) * 100, 1)
-          - RHC_BREAKEVEN_PCT = round((RHC_BREAKEVEN / (MISSED_CALLS_WEEK * 52)) * 100, 1)
-        Else:
-          - INBOUND_BREAKEVEN_PCT = 0
-          - RHC_BREAKEVEN_PCT = 0
-
-  - id: "pricing_audit"
-    type: "gate"
-    stage: "pricing"
-    purpose: "Verify pricing calculations are consistent"
-
-    gate_config:
-      criteria:
-        - name: "all_prices_positive"
-          check: "all([state.data.pricing[k] >= 0 for k in ['INBOUND_WEEKLY', 'RHC_WEEKLY', 'RHC_GROWTH_WEEKLY', 'HIRE_WEEKLY']])"
-        - name: "pilot_pricing_present_if_enabled"
-          check: "(state.data.get('pilot', {}).get('enabled', False) != True) or (state.data.pricing.get('PILOT_WEEKLY') is not None and state.data.pricing.get('PILOT_WEEKLY') >= 0)"
-        - name: "ordering_sensible"
-          check: "state.data.pricing.RHC_WEEKLY >= state.data.pricing.INBOUND_WEEKLY"
-        - name: "growth_addon_applied"
-          check: "state.data.pricing.RHC_GROWTH_WEEKLY >= state.data.pricing.RHC_WEEKLY"
-        - name: "hire_not_cheaper"
-          check: "state.data.pricing.HIRE_WEEKLY >= state.data.pricing.INBOUND_WEEKLY"
-        - name: "shrinkage_correct"
-          check: "abs(state.data.SHRINKAGE_FTE - max(state.data.BASE_FTE / 0.80, 1.25)) < 0.05"
-      on_pass: "charts_generate"
-      on_fail: "pricing_escalate"
-      max_retries: 0
-
-  - id: "pricing_escalate"
-    type: "flow"
-    stage: "pricing"
-    purpose: "Escalate pricing audit failures"
-
-    prompt: |
-      PRICING AUDIT FAILED:
-      {{state.data.gates.pricing_audit.results}}
-
-      Review and fix pricing calculations before proceeding.
-
-    on_complete:
-      - action: "escalate"
-        reason: "Pricing audit failed"
-
-  # ═══════════════════════════════════════════════════════════════════
-  # PHASE 6: CHARTS
-  # ═══════════════════════════════════════════════════════════════════
-  - id: "charts_generate"
-    type: "flow"
+  # ──────────────────────────────────────────────────────────────────
+  # PHASE 6: Charts
+  # ──────────────────────────────────────────────────────────────────
+  - id: "charts"
     stage: "charts"
-    purpose: "Generate all required charts"
+    purpose: "Generate PNG charts, verify file size > 0"
+    instructions_file: "../phone_to_present/workflow/phase6_charts.md"
+    code_required: true
+    outputs:
+      - "charts/*.png"
+    verification:
+      - "All chart files exist"
+      - "All chart files > 1000 bytes"
+    gate:
+      field: "charts.all_exist"
+      on_pass: "presentation"
+      on_fail: "charts"
 
-    prompt: |
-      You are at PHASE 6 - Chart Generation
-
-      Generate 6 required charts to output/<client_slug>/charts/:
-      1. answer_rate_gauge.png - Gauge chart with A-F zones
-      2. pain_windows_heatmap.png - Hour x Day miss rate matrix
-      3. miss_distribution.png - Process vs Capacity pie chart
-      4. hourly_volume.png - Stacked bar by hour
-      5. daily_pattern.png - Grouped bar by day with miss rate line
-      6. fte_coverage.png - Time-weighted concurrency CDF
-
-      Use standard dimensions: 1000x700px, 150 DPI, PNG
-      Use brand colors: Teal #006064, Green #10B981, Yellow #EAB308, Red #E63946
-
-    parallel:
-      spawn: true
-      max_concurrent: 6
-
-    state_writes:
-      - path: "charts_generated"
-        from: "output.chart_results"
-
-  - id: "charts_verify"
-    type: "gate"
-    stage: "charts"
-    purpose: "Verify all charts generated successfully"
-
-    gate_config:
-      criteria:
-        - name: "all_charts_exist"
-          check: "all(state.data.charts_generated.values())"
-      on_pass: "presentation_load_template"
-      on_fail: "charts_placeholder"
-      max_retries: 0
-
-  - id: "charts_placeholder"
-    type: "flow"
-    stage: "charts"
-    purpose: "Create placeholder images for failed charts"
-
-    prompt: |
-      Some charts failed to generate. Create placeholder images.
-
-      Failed charts: {{[k for k, v in state.data.charts_generated.items() if not v]}}
-
-      Create 1000x700 white image with gray border and text:
-      "Chart: <name> [Generation Failed]"
-
-  # ═══════════════════════════════════════════════════════════════════
-  # PHASE 7: PRESENTATION
-  # ═══════════════════════════════════════════════════════════════════
-  - id: "presentation_load_template"
-    type: "flow"
+  # ──────────────────────────────────────────────────────────────────
+  # PHASE 7: Presentation
+  # ──────────────────────────────────────────────────────────────────
+  - id: "presentation"
     stage: "presentation"
-    purpose: "Load Marp presentation template"
+    purpose: "Populate template, generate HTML/PPTX"
+    instructions_file: "../phone_to_present/workflow/phase7_presentation.md"
+    critical_rules:
+      - "Slide 18 MUST use v4 HTML (references/slide18_paths_forward_v4.md)"
+      - "Zero unreplaced {{PLACEHOLDER}} tokens"
+      - "No FTE numbers adjacent to prices"
+    outputs:
+      - "presentation.md"
+      - "presentation.html"
+      - "presentation.pptx"
+    gate:
+      field: "presentation.placeholders_zero"
+      on_pass: "qa"
+      on_fail: "presentation"
 
-    prompt: |
-      Load templates/presentation_template.md
-      Extract all {{VARIABLE}} placeholders.
-      Verify all required variables are available in state.
-
-    on_error:
-      - action: "escalate"
-        reason: "Template file missing"
-
-  - id: "presentation_replace_variables"
-    type: "flow"
-    stage: "presentation"
-    purpose: "Replace all template variables"
-
-    prompt: |
-      Replace all {{VARIABLE}} placeholders with calculated values.
-
-      Variable formatting rules:
-      - Template controls $ and % symbols
-      - Provide values as pre-formatted strings
-      - Use commas for thousands (e.g., "1,234")
-
-      CRITICAL for Slide 18 (Paths Forward):
-      - DO NOT use markdown table
-      - Replace the entire Slide 18 placeholder content (including the `# Paths Forward` markdown heading and `<div class="tight-table">` wrapper) with the v4 HTML structure:
-          - `<div class="pf-container"><table class="pf-table">...`
-          - No separate title: the table fills the slide
-      - Add the Paths Forward CSS to the Marp `style:` block (see `phone_to_present/workflow/phase7_presentation.md` or `brains/phone_to_present/references/slide18_paths_forward_v4.md`)
-      - Required column structure (standard):
-          1) Feature
-          2) DIY Staffing (grayed out; price shown with strikethrough)
-          3) Inbound Answering
-          4) RHC with teal gradient header + gold "Most Popular" badge
-          5) RHC + Growth
-      - Optional Pilot column:
-          - If Pilot is enabled:
-              - Insert a Pilot Program column between DIY and Inbound using the v4 `<th class="pf-pilot">` header and yellow SLA badge (`<div class="pf-sla-badge pf-sla-yellow">90% SLA</div>`)
-              - Add corresponding `<td>` cells after the DIY column in every feature row and both pricing rows
-              - Pilot feature mapping matches the Inbound Answering column (Pilot is inbound answering only)
-              - Weekly Investment row uses `PILOT_WEEKLY`; savings uses `HIRE_WEEKLY - PILOT_WEEKLY`
-      - Use SVG icons for feature rows:
-          - `.pf-icon-check` (green check) = MyBCAT handles
-          - `.pf-icon-warn` (amber warn) = You manage
-          - `.pf-icon-x` (gray X) = Not included
-      - Feature rows must use the standard v4 set + mapping from `brains/phone_to_present/references/slide18_paths_forward_v4.md`:
-          - Live Inbound Calls, Text Messaging, Appointment Requests, AI Overflow/After-Hours,
-            Insurance Verification, Appointment Confirmations, Recalls & Reactivations, Waitlist Management,
-            Real-Time Dashboard, Monthly Consulting, Recruiting & Training, PTO & Turnover
-      - Include pricing rows at the bottom:
-          - Weekly Investment row (DIY price strikethrough)
-          - "vs. DIY Staffing" savings row (green badge on RHC column)
-          - Replace the `$XXX/wk` placeholders with the computed weekly savings vs DIY staffing (Hire In-House):
-              - Inbound: `HIRE_WEEKLY - INBOUND_WEEKLY`
-              - RHC: `HIRE_WEEKLY - RHC_WEEKLY` (render using `.pf-savings-badge` in the RHC column)
-              - RHC+ Growth: `HIRE_WEEKLY - RHC_GROWTH_WEEKLY`
-      - Quick check: if Slide 18 contains `|---|---|` markdown syntax, it is wrong
-
-    output_schema:
-      type: "object"
-      required: ["populated_content", "unreplaced_count"]
-
-  - id: "presentation_save_markdown"
-    type: "flow"
-    stage: "presentation"
-    purpose: "Save populated markdown"
-
-    prompt: |
-      Save populated markdown to:
-      output/<client_slug>/presentation.md
-
-      This becomes the SOURCE OF TRUTH for the presentation.
-      Generate HTML/PPTX only from this file.
-
-  - id: "presentation_render_html"
-    type: "tributary"
-    stage: "presentation"
-    purpose: "Render HTML via Marp CLI"
-
-    skill_name: "marp_render"
-    skill_config:
-      input: "output/<client_slug>/presentation.md"
-      output: "output/<client_slug>/presentation.html"
-      options: ["--html", "--allow-local-files"]
-
-    on_error:
-      - action: "warn"
-        message: "Marp CLI not installed. Output is .md only."
-
-  - id: "presentation_render_pptx"
-    type: "tributary"
-    stage: "presentation"
-    purpose: "Render PPTX via Marp CLI"
-
-    skill_name: "marp_render"
-    skill_config:
-      input: "output/<client_slug>/presentation.md"
-      output: "output/<client_slug>/presentation.pptx"
-      options: ["--allow-local-files"]
-
-  - id: "presentation_verify_outputs"
-    type: "gate"
-    stage: "presentation"
-    purpose: "Verify all presentation files created"
-
-    gate_config:
-      criteria:
-        - name: "md_exists"
-          check: "state.data.presentation_files.md_exists"
-        - name: "no_unreplaced_vars"
-          check: "state.data.unreplaced_count == 0"
-      on_pass: "qa_visual"
-      on_fail: "presentation_fix"
-      max_retries: 1
-
-  - id: "presentation_fix"
-    type: "flow"
-    stage: "presentation"
-    purpose: "Fix presentation issues"
-
-    prompt: |
-      Presentation issues found:
-      - Unreplaced variables: {{state.data.unreplaced_variables}}
-      - Missing files: {{state.data.missing_files}}
-
-      Fix issues and regenerate.
-
-  # ═══════════════════════════════════════════════════════════════════
-  # PHASE 7b: PRESENTATION QA
-  # ═══════════════════════════════════════════════════════════════════
-  - id: "qa_visual"
-    type: "flow"
+  # ──────────────────────────────────────────────────────────────────
+  # PHASE 7b: QA
+  # ──────────────────────────────────────────────────────────────────
+  - id: "qa"
     stage: "qa"
-    purpose: "Visual QA - review HTML presentation"
+    purpose: "Visual verification of critical slides"
+    instructions_file: "../phone_to_present/workflow/phase7b_presentation_qa.md"
+    critical_slides: [1, 5, 8, 18]
+    checks:
+      - "No white-on-white text"
+      - "Margins on all sides"
+      - "All images load"
+      - "Slide 18 is v4 HTML (not markdown)"
+    gate:
+      field: "qa.all_pass"
+      on_pass: "deliverables"
+      on_fail: "presentation"  # Fix and re-render
 
-    prompt: |
-      You are at PHASE 7b - Presentation QA
-
-      Open HTML and visually inspect each slide for:
-      - White-on-white text (especially section dividers)
-      - Whitespace on all 4 sides
-      - Images loading correctly
-      - No emojis
-      - Proper alignment
-      - No content overflow
-
-      CRITICAL CHECKS:
-      - PART 1/2/3 dividers must have colored backgrounds
-      - No content touching slide edges
-      - All charts visible and legible
-
-    parallel:
-      spawn: true
-      strategy: "visual_verification"
-
-  - id: "qa_pptx"
-    type: "flow"
-    stage: "qa"
-    purpose: "Verify PPTX renders correctly"
-
-    prompt: |
-      Open PPTX and spot-check:
-      - Title slide renders correctly
-      - Section dividers have correct backgrounds
-      - Tables not truncated
-      - Images/charts appear correctly
-
-  - id: "qa_automated"
-    type: "tributary"
-    stage: "qa"
-    purpose: "Run automated QA checks"
-
-    prompt: |
-      Run deterministic render + verification (source of truth = populated .md):
-      - python scripts/render_verify.py output/<client_slug>/presentation.md
-
-      This should fail fast on:
-      - unreplaced {{VARIABLE}} tokens
-      - missing local images
-      - PPTX slide count mismatch
-      - whitespace/margin violations
-      - emoji characters in client deck
-
-    skill_name: "render_verify"
-    skill_config:
-      input: "output/<client_slug>/presentation.md"
-      checks:
-        - "unreplaced_variables"
-        - "missing_images"
-        - "whitespace_margins"
-        - "emoji_scan"
-
-  - id: "qa_gate"
-    type: "gate"
-    stage: "qa"
-    purpose: "QA gate - all slides must pass"
-
-    gate_config:
-      criteria:
-        - name: "no_white_on_white"
-          check: "state.data.qa_results.white_on_white_count == 0"
-        - name: "margins_ok"
-          check: "all(state.data.qa_results.margin_pass)"
-        - name: "no_emojis"
-          check: "state.data.qa_results.emoji_count == 0"
-        - name: "images_ok"
-          check: "state.data.qa_results.missing_images == 0"
-      on_pass: "deliverables_summary"
-      on_fail: "qa_fix"
-      max_retries: 3
-
-  - id: "qa_fix"
-    type: "flow"
-    stage: "qa"
-    purpose: "Fix QA issues"
-
-    prompt: |
-      QA issues found:
-      {{state.data.qa_results}}
-
-      Fixes to apply:
-      - White-on-white: add backgroundColor directive
-      - Content overflow: restructure to side-by-side or split
-      - Emojis: remove all emoji characters
-      - Missing images: check paths or regenerate charts
-
-    on_complete:
-      - action: "regenerate_presentation"
-
-  # ═══════════════════════════════════════════════════════════════════
-  # PHASE 8: DELIVERABLES
-  # ═══════════════════════════════════════════════════════════════════
-  - id: "deliverables_summary"
-    type: "flow"
+  # ──────────────────────────────────────────────────────────────────
+  # PHASE 8: Deliverables
+  # ──────────────────────────────────────────────────────────────────
+  - id: "deliverables"
     stage: "deliverables"
-    purpose: "Present summary to user"
+    purpose: "Output summary, list all generated files"
+    instructions_file: "../phone_to_present/workflow/phase8_deliverables.md"
+    outputs:
+      - "gold_calls.csv"
+      - "analysis_manifest.json"
+      - "charts/"
+      - "presentation.md"
+      - "presentation.html"
+      - "presentation.pptx"
+    gate:
+      field: "deliverables.complete"
+      on_pass: "success"
+      on_fail: "deliverables"
 
-    prompt: |
-      You are at PHASE 8 - Deliverables
-
-      Present summary dashboard:
-      - Client name, date range, total calls
-      - Key metrics: answer rate, grade, missed/week, revenue leak
-      - Root cause: process vs capacity
-      - Worst windows
-      - Pricing options: Inbound, RHC, RHC+ Growth, In-House
-
-      List all generated files with status.
-
-  - id: "deliverables_insights"
-    type: "flow"
-    stage: "deliverables"
-    purpose: "Generate key insights"
-
-    prompt: |
-      Generate 4-5 key insights based on analysis:
-
-      1. Grade-based insight (performance assessment)
-      2. Process vs Capacity insight (root cause)
-      3. Worst hours insight (problem areas)
-      4. Revenue impact insight (financial motivation)
-      5. Savings insight (value proposition)
-
-  - id: "deliverables_manifest"
-    type: "flow"
-    stage: "deliverables"
-    purpose: "Write analysis manifest"
-
-    prompt: |
-      Write analysis_manifest.json (match `phone_to_present/scripts/run_pipeline.py` schema) with:
-      - Top-level numeric keys required by `phone_to_present/scripts/verify_financials.py`:
-        BASE_FTE, SHRINKAGE_FTE, OT_HOURS, HAS_SATURDAY, HAS_SUNDAY,
-        MYBCAT_WEEKLY_RATE, MYBCAT_OT_HOURLY, INHOUSE_WEEKLY_RATE, INHOUSE_OT_HOURLY, WEEKEND_PREMIUM_PER_DAY,
-        OPEN_MISSED, WEEKS_IN_RANGE, MISSED_CALLS_WEEK,
-        INBOUND_WEEKLY, RHC_WEEKLY, RHC_GROWTH_ADDON_WEEKLY, RHC_GROWTH_WEEKLY, HIRE_WEEKLY,
-        INBOUND_MONTHLY, INBOUND_ANNUAL, RHC_MONTHLY, RHC_ANNUAL, RHC_GROWTH_MONTHLY, RHC_GROWTH_ANNUAL, HIRE_MONTHLY, HIRE_ANNUAL
-      - Pilot keys when enabled (else nulls):
-        PILOT_ENABLED, PILOT_LEVEL, PILOT_CALCULATION, PILOT_ANSWER_RATE, PILOT_WEEKLY, PILOT_MONTHLY, PILOT_ANNUAL
-      - pricing breakdown object (components sum to weekly totals)
-      - deck_variables (all placeholder values)
-      - metrics (open-hours KPIs, grade)
-      - fte (BASE_FTE, SHRINKAGE_FTE)
-      - pricing (all options breakdown)
-      - quality (mapping report, confirmations, caveats)
-
-      Save to: output/<client_slug>/analysis_manifest.json
-
-  - id: "sediment_run"
-    type: "sediment"
-    stage: "deliverables"
-    purpose: "Commit successful run patterns to memory"
-
-    memory:
-      write: true
-      source: "state.signals.successes"
-      require_triplets: false
-      conflict_action: "flag"
-
+  # ──────────────────────────────────────────────────────────────────
+  # Terminal Nodes
+  # ──────────────────────────────────────────────────────────────────
   - id: "success"
-    type: "terminal"
     stage: "complete"
-    purpose: "Workflow completed successfully"
-
-    on_reach:
-      - action: "trigger_learning"
-        outcome: "success"
-      - action: "write_memory"
-        content: "successful_patterns"
-      - action: "present_completion"
-        message: |
-          WORKFLOW COMPLETE
-
-          Analysis completed successfully for {{state.data.client.name}}.
-
-          To present:
-          1. Open output/<client_slug>/presentation.html in browser
-          2. Press F11 for fullscreen
-          3. Use arrow keys to navigate
+    terminal: true
+    outcome: "success"
 
   - id: "failure"
-    type: "terminal"
     stage: "complete"
-    purpose: "Workflow failed - unrecoverable"
+    terminal: true
+    outcome: "failure"
 
-    on_reach:
-      - action: "trigger_learning"
-        outcome: "failure"
-      - action: "log_failure_mode"
-      - action: "present_failure"
-        message: "Workflow failed: {{state.data.failure_reason}}"
+  - id: "blocked"
+    stage: "blocked"
+    terminal: true
+    outcome: "blocked"
+    action: "Ask user for resolution"
 
-  - id: "escalate"
-    type: "terminal"
-    stage: "complete"
-    purpose: "Needs human intervention"
+# ════════════════════════════════════════════════════════════════════
+# EDGES - Transitions between nodes
+# ════════════════════════════════════════════════════════════════════
 
-    on_reach:
-      - action: "notify_human"
-        message: "{{state.data.escalation_reason}}"
-
-# ═══════════════════════════════════════════════════════════════════
-# EDGES
-# ═══════════════════════════════════════════════════════════════════
 edges:
-  # Intake -> Discovery
-  - id: "e_intake_discovery"
-    from: "intake"
-    to: "discovery_find_files"
-    type: "laminar"
-    guard: "state.data.get('ready_for_discovery', False) == True"
-    priority: 1
-
-  # Discovery file flow
-  - id: "e_files_selection"
-    from: "discovery_find_files"
-    to: "discovery_file_selection"
-    type: "laminar"
-    priority: 1
-
-  - id: "e_selection_metadata"
-    from: "discovery_file_selection"
-    to: "discovery_metadata"
-    type: "laminar"
-    guard: "state.data.get('selected_file') is not None"
-    priority: 1
-
-  - id: "e_selection_ask"
-    from: "discovery_file_selection"
-    to: "discovery_ask_file"
-    type: "laminar"
-    guard: "state.data.get('needs_user_selection', False) == True"
-    priority: 2
-
-  - id: "e_ask_back"
-    from: "discovery_ask_file"
-    to: "discovery_file_selection"
-    type: "laminar"
-    priority: 1
-
-  # Discovery metadata flow
-  - id: "e_metadata_scrape"
-    from: "discovery_metadata"
-    to: "discovery_website_scrape"
-    type: "laminar"
-    guard: "state.data.client.website_url is not None"
-    priority: 1
-
-  - id: "e_scrape_closures"
-    from: "discovery_website_scrape"
-    to: "discovery_closures"
-    type: "laminar"
-    priority: 1
-
-  - id: "e_scrape_fail_manual"
-    from: "discovery_website_scrape"
-    to: "discovery_manual_metadata"
-    type: "laminar"
-    guard: "state.data.get('scrape_failed', False) == True"
-    priority: 2
-
-  - id: "e_manual_closures"
-    from: "discovery_manual_metadata"
-    to: "discovery_closures"
-    type: "laminar"
-    priority: 1
-
-  - id: "e_closures_calc"
-    from: "discovery_closures"
-    to: "discovery_calculate_hours"
-    type: "laminar"
-    priority: 1
-
-  - id: "e_calc_confirm"
-    from: "discovery_calculate_hours"
-    to: "discovery_confirmation"
-    type: "laminar"
-    priority: 1
-
-  - id: "e_confirm_sediment"
-    from: "discovery_confirmation"
-    to: "sediment_discovery"
-    type: "laminar"
-    guard: "state.data.confirmations.timezone in ['confirmed', 'assumed']"
-    priority: 1
-
-  - id: "e_sediment_ingestion"
-    from: "sediment_discovery"
-    to: "ingestion_identify_format"
-    type: "laminar"
-    priority: 1
-
-  # Ingestion flow
-  - id: "e_format_mapping"
-    from: "ingestion_identify_format"
-    to: "ingestion_column_mapping"
-    type: "laminar"
-    priority: 1
-
-  - id: "e_mapping_ask"
-    from: "ingestion_column_mapping"
-    to: "ingestion_ask_columns"
-    type: "laminar"
-    guard: "len(state.data.ambiguous_columns) > 0"
-    priority: 2
-
-  - id: "e_ask_mapping"
-    from: "ingestion_ask_columns"
-    to: "ingestion_column_mapping"
-    type: "laminar"
-    priority: 1
-
-  - id: "e_mapping_direction"
-    from: "ingestion_column_mapping"
-    to: "ingestion_normalize_direction"
-    type: "laminar"
-    guard: "len(state.data.missing_required) == 0"
-    priority: 1
-
-  - id: "e_direction_disposition"
-    from: "ingestion_normalize_direction"
-    to: "ingestion_normalize_disposition"
-    type: "laminar"
-    priority: 1
-
-  - id: "e_disposition_review"
-    from: "ingestion_normalize_disposition"
-    to: "ingestion_disposition_review"
-    type: "laminar"
-    priority: 1
-
-  - id: "e_review_refine"
-    from: "ingestion_disposition_review"
-    to: "ingestion_refine_disposition"
-    type: "turbulent"
-    guard: "state.data.pct_unknown_disposition > 1"
-    priority: 2
-    max_retries: 2
-
-  - id: "e_refine_review"
-    from: "ingestion_refine_disposition"
-    to: "ingestion_disposition_review"
-    type: "laminar"
-    priority: 1
-
-  - id: "e_review_context"
-    from: "ingestion_disposition_review"
-    to: "ingestion_add_context"
-    type: "laminar"
-    guard: "state.data.confirmations.disposition_mapping == 'confirmed'"
-    priority: 1
-
-  - id: "e_context_gold"
-    from: "ingestion_add_context"
-    to: "ingestion_create_gold_table"
-    type: "laminar"
-    priority: 1
-
-  - id: "e_gold_quality"
-    from: "ingestion_create_gold_table"
-    to: "ingestion_quality_checks"
-    type: "laminar"
-    priority: 1
-
-  - id: "e_quality_gate"
-    from: "ingestion_quality_checks"
-    to: "ingestion_quality_gate"
-    type: "laminar"
-    priority: 1
-
-  - id: "e_gate_analysis"
-    from: "ingestion_quality_gate"
-    to: "analysis_filter_inbound"
-    type: "laminar"
-    guard: "state.data.quality_grade in ['A', 'B', 'C']"
-    priority: 1
-
-  - id: "e_gate_escalate"
-    from: "ingestion_quality_gate"
-    to: "ingestion_quality_escalate"
-    type: "laminar"
-    guard: "state.data.quality_grade in ['D', 'F']"
-    priority: 2
-
-  # Analysis flow
-  - id: "e_filter_metrics"
-    from: "analysis_filter_inbound"
-    to: "analysis_primary_metrics"
-    type: "laminar"
-    guard: "state.data.TOTAL_INBOUND > 0"
-    priority: 1
-
-  - id: "e_metrics_grade"
-    from: "analysis_primary_metrics"
-    to: "analysis_grade_assignment"
-    type: "laminar"
-    priority: 1
-
-  - id: "e_grade_closed"
-    from: "analysis_grade_assignment"
-    to: "analysis_closed_hours"
-    type: "laminar"
-    priority: 1
-
-  - id: "e_closed_duration"
-    from: "analysis_closed_hours"
-    to: "analysis_duration_stats"
-    type: "laminar"
-    priority: 1
-
-  - id: "e_duration_daily"
-    from: "analysis_duration_stats"
-    to: "analysis_daily_volume"
-    type: "laminar"
-    priority: 1
-
-  - id: "e_daily_hourly"
-    from: "analysis_daily_volume"
-    to: "analysis_hourly_volume"
-    type: "laminar"
-    priority: 1
-
-  - id: "e_hourly_pain"
-    from: "analysis_hourly_volume"
-    to: "analysis_pain_windows"
-    type: "laminar"
-    priority: 1
-
-  - id: "e_pain_worst"
-    from: "analysis_pain_windows"
-    to: "analysis_worst_hours"
-    type: "laminar"
-    priority: 1
-
-  - id: "e_worst_location"
-    from: "analysis_worst_hours"
-    to: "analysis_location"
-    type: "laminar"
-    guard: "state.data.client.location_count > 1"
-    priority: 1
-
-  - id: "e_worst_concurrency"
-    from: "analysis_worst_hours"
-    to: "concurrency_triggered"
-    type: "laminar"
-    guard: "state.data.client.location_count <= 1"
-    priority: 2
-
-  - id: "e_location_concurrency"
-    from: "analysis_location"
-    to: "concurrency_triggered"
-    type: "laminar"
-    priority: 1
-
-  # Concurrency flow
-  - id: "e_triggered_weighted"
-    from: "concurrency_triggered"
-    to: "concurrency_time_weighted"
-    type: "laminar"
-    priority: 1
-
-  - id: "e_weighted_summary"
-    from: "concurrency_time_weighted"
-    to: "concurrency_summary"
-    type: "laminar"
-    priority: 1
-
-  - id: "e_summary_mc"
-    from: "concurrency_summary"
-    to: "concurrency_monte_carlo"
-    type: "laminar"
-    priority: 1
-
-  - id: "e_mc_fte"
-    from: "concurrency_monte_carlo"
-    to: "concurrency_fte_calculation"
-    type: "laminar"
-    priority: 1
-
-  - id: "e_fte_verify"
-    from: "concurrency_fte_calculation"
-    to: "concurrency_fte_verification"
-    type: "laminar"
-    priority: 1
-
-  - id: "e_verify_pilot"
-    from: "concurrency_fte_verification"
-    to: "concurrency_pilot_options"
-    type: "laminar"
-    guard: "state.data.get('verification_passed', False) == True"
-    priority: 1
-
-  - id: "e_verify_escalate"
-    from: "concurrency_fte_verification"
-    to: "concurrency_fte_escalate"
-    type: "laminar"
-    guard: "state.data.get('verification_passed', False) == False"
-    priority: 2
-
-  - id: "e_pilot_miss"
-    from: "concurrency_pilot_options"
-    to: "concurrency_miss_analysis"
-    type: "laminar"
-    priority: 1
-
-  - id: "e_miss_pricing"
-    from: "concurrency_miss_analysis"
-    to: "pricing_inbound"
-    type: "laminar"
-    priority: 1
-
-  # Pricing flow
-  - id: "e_inbound_rhc"
-    from: "pricing_inbound"
-    to: "pricing_rhc"
-    type: "laminar"
-    priority: 1
-
-  - id: "e_rhc_growth"
-    from: "pricing_rhc"
-    to: "pricing_rhc_growth"
-    type: "laminar"
-    priority: 1
-
-  - id: "e_growth_inhouse"
-    from: "pricing_rhc_growth"
-    to: "pricing_inhouse"
-    type: "laminar"
-    priority: 1
-
-  - id: "e_inhouse_pilot"
-    from: "pricing_inhouse"
-    to: "pricing_pilot"
-    type: "laminar"
-    guard: "state.data.get('pilot', {}).get('enabled', False) == True"
-    priority: 1
-
-  - id: "e_inhouse_leak"
-    from: "pricing_inhouse"
-    to: "pricing_revenue_leak"
-    type: "laminar"
-    guard: "state.data.get('pilot', {}).get('enabled', False) != True"
-    priority: 1
-
-  - id: "e_pilot_leak"
-    from: "pricing_pilot"
-    to: "pricing_revenue_leak"
-    type: "laminar"
-    priority: 1
-
-  - id: "e_leak_savings"
-    from: "pricing_revenue_leak"
-    to: "pricing_savings_roi"
-    type: "laminar"
-    priority: 1
-
-  - id: "e_savings_audit"
-    from: "pricing_savings_roi"
-    to: "pricing_audit"
-    type: "laminar"
-    priority: 1
-
-  - id: "e_audit_charts"
-    from: "pricing_audit"
-    to: "charts_generate"
-    type: "laminar"
-    guard: "state.data.get('verification_passed', False) == True"
-    priority: 1
-
-  - id: "e_audit_escalate"
-    from: "pricing_audit"
-    to: "pricing_escalate"
-    type: "laminar"
-    guard: "state.data.get('verification_passed', False) == False"
-    priority: 2
-
-  # Charts flow
-  - id: "e_charts_verify"
-    from: "charts_generate"
-    to: "charts_verify"
-    type: "laminar"
-    priority: 1
-
-  - id: "e_verify_load"
-    from: "charts_verify"
-    to: "presentation_load_template"
-    type: "laminar"
-    priority: 1
-
-  - id: "e_verify_placeholder"
-    from: "charts_verify"
-    to: "charts_placeholder"
-    type: "laminar"
-    guard: "not all(state.data.charts_generated.values())"
-    priority: 2
-
-  - id: "e_placeholder_load"
-    from: "charts_placeholder"
-    to: "presentation_load_template"
-    type: "laminar"
-    priority: 1
-
-  # Presentation flow
-  - id: "e_load_replace"
-    from: "presentation_load_template"
-    to: "presentation_replace_variables"
-    type: "laminar"
-    priority: 1
-
-  - id: "e_replace_save"
-    from: "presentation_replace_variables"
-    to: "presentation_save_markdown"
-    type: "laminar"
-    priority: 1
-
-  - id: "e_save_html"
-    from: "presentation_save_markdown"
-    to: "presentation_render_html"
-    type: "laminar"
-    priority: 1
-
-  - id: "e_html_pptx"
-    from: "presentation_render_html"
-    to: "presentation_render_pptx"
-    type: "laminar"
-    priority: 1
-
-  - id: "e_pptx_verify"
-    from: "presentation_render_pptx"
-    to: "presentation_verify_outputs"
-    type: "laminar"
-    priority: 1
-
-  - id: "e_outputs_qa"
-    from: "presentation_verify_outputs"
-    to: "qa_visual"
-    type: "laminar"
-    guard: "state.data.unreplaced_count == 0"
-    priority: 1
-
-  - id: "e_outputs_fix"
-    from: "presentation_verify_outputs"
-    to: "presentation_fix"
-    type: "turbulent"
-    guard: "state.data.unreplaced_count > 0"
-    priority: 2
-    max_retries: 1
-
-  - id: "e_fix_replace"
-    from: "presentation_fix"
-    to: "presentation_replace_variables"
-    type: "laminar"
-    priority: 1
-
-  # QA flow
-  - id: "e_visual_pptx"
-    from: "qa_visual"
-    to: "qa_pptx"
-    type: "laminar"
-    priority: 1
-
-  - id: "e_pptx_auto"
-    from: "qa_pptx"
-    to: "qa_automated"
-    type: "laminar"
-    priority: 1
-
-  - id: "e_auto_gate"
-    from: "qa_automated"
-    to: "qa_gate"
-    type: "laminar"
-    priority: 1
-
-  - id: "e_gate_deliver"
-    from: "qa_gate"
-    to: "deliverables_summary"
-    type: "laminar"
-    guard: "state.data.get('verification_passed', False) == True"
-    priority: 1
-
-  - id: "e_gate_fix"
-    from: "qa_gate"
-    to: "qa_fix"
-    type: "turbulent"
-    guard: "state.data.get('verification_passed', False) == False"
+  # Pre-flight
+  - from: "preflight"
+    to: "discovery"
+    guard: "state.preflight.all_checks_passed == true"
+
+  - from: "preflight"
+    to: "blocked"
+    guard: "state.preflight.all_checks_passed == false"
+
+  # Discovery -> Ingestion
+  - from: "discovery"
+    to: "ingestion"
+    guard: "state.discovery.confirmed == true"
+
+  # Ingestion -> Analysis
+  - from: "ingestion"
+    to: "analysis"
+    guard: "state.ingestion.quality_passed == true"
+
+  # Analysis -> Concurrency
+  - from: "analysis"
+    to: "concurrency"
+    guard: "state.analysis.kpis_computed == true"
+
+  # Concurrency -> Pricing
+  - from: "concurrency"
+    to: "pricing"
+    guard: "state.concurrency.fte_reconciled == true"
+
+  - from: "concurrency"
+    to: "blocked"
+    guard: "abs(state.concurrency.BASE_FTE - state.concurrency.MC_FTE_90) > 1.0"
+
+  # Pricing -> Charts
+  - from: "pricing"
+    to: "charts"
+    guard: "state.pricing.verified == true"
+
+  # Charts -> Presentation
+  - from: "charts"
+    to: "presentation"
+    guard: "state.charts.all_exist == true"
+
+  # Presentation -> QA
+  - from: "presentation"
+    to: "qa"
+    guard: "state.presentation.placeholders_zero == true"
+
+  # QA -> Deliverables (or back to Presentation)
+  - from: "qa"
+    to: "deliverables"
+    guard: "state.qa.all_pass == true"
+
+  - from: "qa"
+    to: "presentation"
+    guard: "state.qa.all_pass == false"
     max_retries: 3
-    priority: 2
 
-  - id: "e_fix_visual"
-    from: "qa_fix"
-    to: "qa_visual"
-    type: "laminar"
-    priority: 1
-
-  # Deliverables flow
-  - id: "e_summary_insights"
-    from: "deliverables_summary"
-    to: "deliverables_insights"
-    type: "laminar"
-    priority: 1
-
-  - id: "e_insights_manifest"
-    from: "deliverables_insights"
-    to: "deliverables_manifest"
-    type: "laminar"
-    priority: 1
-
-  - id: "e_manifest_sediment"
-    from: "deliverables_manifest"
-    to: "sediment_run"
-    type: "laminar"
-    priority: 1
-
-  - id: "e_sediment_success"
-    from: "sediment_run"
+  # Deliverables -> Success
+  - from: "deliverables"
     to: "success"
-    type: "laminar"
-    priority: 1
+    guard: "state.deliverables.complete == true"
 
-  # Global failure paths
-  - id: "e_any_escalate"
-    from: "*"
-    to: "escalate"
-    type: "laminar"
-    guard: "state.data.get('needs_human', False) == True"
-    priority: 100
+# ════════════════════════════════════════════════════════════════════
+# STOP CONDITIONS - Global halts
+# ════════════════════════════════════════════════════════════════════
 
-  - id: "e_max_steps_failure"
-    from: "*"
-    to: "failure"
-    type: "laminar"
-    guard: "state.counters.total_steps >= state.brain.execution.max_steps"
-    priority: 99
+stop_conditions:
+  - condition: "Template missing"
+    action: "STOP - DO NOT generate from scratch"
 
-  - id: "e_critical_error"
-    from: "*"
-    to: "failure"
-    type: "laminar"
-    guard: "state.data.get('critical_error', False) == True"
-    priority: 98
+  - condition: "FTE reconciliation fails"
+    action: "STOP - calculation error, must fix"
 
-# ═══════════════════════════════════════════════════════════════════
-# RELATIONSHIPS (for learning)
-# ═══════════════════════════════════════════════════════════════════
-relationships:
-  - from: "discovery_confirmation"
-    to: "analysis_quality"
-    type: "informs"
-    weight: 1.0
-    note: "Confirmed metadata leads to better analysis quality"
+  - condition: "Unknown disposition > 10%"
+    action: "STOP - data quality, ask user"
 
-  - from: "ingestion_disposition_review"
-    to: "analysis_accuracy"
-    type: "grounds"
-    weight: 1.0
-    note: "Disposition confirmation grounds metrics accuracy"
+  - condition: "Grade D or F"
+    action: "STOP - confirm with user before proceeding"
 
-  - from: "concurrency_fte_verification"
-    to: "pricing_accuracy"
-    type: "grounds"
-    weight: 1.0
-    note: "FTE verification validates pricing calculations"
-
-  - from: "qa_gate"
-    to: "client_satisfaction"
-    type: "correlates"
-    weight: 0.8
-    note: "QA pass correlates with client satisfaction"
-
-  - from: "failure_at_qa"
-    to: "template_issues"
-    type: "indicates"
-    weight: 0.6
-    note: "QA failures often indicate template or chart issues"
-
-  - from: "pricing_audit_failure"
-    to: "fte_calculation_error"
-    type: "indicates"
-    weight: 0.7
-    note: "Pricing audit failures often trace to FTE errors"
+  - condition: "Chart file size = 0"
+    action: "STOP - regenerate chart"

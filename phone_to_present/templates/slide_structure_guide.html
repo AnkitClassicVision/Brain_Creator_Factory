@@ -1,0 +1,769 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Presentation Structure Guide - Phone Analysis</title>
+    <style>
+        :root {
+            --primary: #2563eb;
+            --success: #16a34a;
+            --warning: #ca8a04;
+            --danger: #dc2626;
+            --purple: #7c3aed;
+            --gray: #64748b;
+            --light: #f8fafc;
+            --dark: #1e293b;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: var(--light);
+            color: var(--dark);
+            line-height: 1.6;
+            padding: 2rem;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        header {
+            text-align: center;
+            margin-bottom: 3rem;
+            padding-bottom: 2rem;
+            border-bottom: 2px solid #e2e8f0;
+        }
+
+        h1 {
+            font-size: 2.5rem;
+            margin-bottom: 0.5rem;
+            color: var(--primary);
+        }
+
+        .subtitle {
+            color: var(--gray);
+            font-size: 1.1rem;
+        }
+
+        .framework {
+            background: white;
+            border-radius: 12px;
+            padding: 2rem;
+            margin-bottom: 2rem;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+
+        .framework h2 {
+            color: var(--primary);
+            margin-bottom: 1rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .flow-diagram {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 1rem;
+            padding: 2rem;
+            background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%);
+            border-radius: 8px;
+            margin-bottom: 1rem;
+            flex-wrap: wrap;
+        }
+
+        .flow-step {
+            background: white;
+            padding: 1rem 1.5rem;
+            border-radius: 8px;
+            text-align: center;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            min-width: 140px;
+        }
+
+        .flow-step.hook { border-left: 4px solid var(--primary); }
+        .flow-step.diagnosis { border-left: 4px solid var(--success); }
+        .flow-step.prognosis { border-left: 4px solid var(--danger); }
+        .flow-step.treatment { border-left: 4px solid var(--purple); }
+
+        .flow-step strong {
+            display: block;
+            font-size: 0.85rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin-bottom: 0.25rem;
+        }
+
+        .flow-step span {
+            font-size: 0.8rem;
+            color: var(--gray);
+        }
+
+        .arrow {
+            font-size: 1.5rem;
+            color: var(--gray);
+        }
+
+        .mode-toggle {
+            display: flex;
+            gap: 1rem;
+            margin-bottom: 2rem;
+            justify-content: center;
+        }
+
+        .mode-btn {
+            padding: 0.75rem 1.5rem;
+            border: 2px solid var(--primary);
+            background: white;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: all 0.2s;
+        }
+
+        .mode-btn:hover, .mode-btn.active {
+            background: var(--primary);
+            color: white;
+        }
+
+        .section {
+            margin-bottom: 2rem;
+        }
+
+        .section-header {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            padding: 1rem;
+            border-radius: 8px;
+            margin-bottom: 1rem;
+            color: white;
+        }
+
+        .section-header.opening { background: var(--primary); }
+        .section-header.diagnosis { background: var(--success); }
+        .section-header.prognosis { background: var(--danger); }
+        .section-header.treatment { background: var(--purple); }
+        .section-header.extended { background: var(--warning); }
+        .section-header.appendix { background: var(--gray); }
+
+        .section-header h3 {
+            flex: 1;
+        }
+
+        .section-header .time {
+            font-size: 0.9rem;
+            opacity: 0.9;
+        }
+
+        .slides-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+            gap: 1rem;
+        }
+
+        .slide-card {
+            background: white;
+            border-radius: 8px;
+            padding: 1.25rem;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            border-left: 4px solid var(--gray);
+            transition: all 0.2s;
+        }
+
+        .slide-card:hover {
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            transform: translateY(-2px);
+        }
+
+        .slide-card.required { border-left-color: var(--success); }
+        .slide-card.conditional { border-left-color: var(--warning); }
+        .slide-card.optional { border-left-color: var(--gray); }
+        .slide-card.extended-only { opacity: 0.6; }
+
+        .slide-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 0.75rem;
+        }
+
+        .slide-number {
+            background: var(--light);
+            padding: 0.25rem 0.5rem;
+            border-radius: 4px;
+            font-size: 0.8rem;
+            font-weight: 600;
+        }
+
+        .slide-tag {
+            font-size: 0.7rem;
+            padding: 0.2rem 0.5rem;
+            border-radius: 4px;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+
+        .slide-tag.required { background: #dcfce7; color: var(--success); }
+        .slide-tag.conditional { background: #fef9c3; color: var(--warning); }
+        .slide-tag.optional { background: #f1f5f9; color: var(--gray); }
+
+        .slide-title {
+            font-weight: 600;
+            margin-bottom: 0.5rem;
+        }
+
+        .slide-purpose {
+            font-size: 0.85rem;
+            color: var(--gray);
+            margin-bottom: 0.75rem;
+        }
+
+        .slide-question {
+            font-size: 0.8rem;
+            padding: 0.5rem;
+            background: #f0f9ff;
+            border-radius: 4px;
+            color: var(--primary);
+            font-style: italic;
+        }
+
+        .slide-question::before {
+            content: "Answers: ";
+            font-weight: 600;
+            font-style: normal;
+        }
+
+        .legend {
+            display: flex;
+            gap: 2rem;
+            justify-content: center;
+            padding: 1rem;
+            background: white;
+            border-radius: 8px;
+            margin-bottom: 2rem;
+            flex-wrap: wrap;
+        }
+
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-size: 0.9rem;
+        }
+
+        .legend-color {
+            width: 16px;
+            height: 16px;
+            border-radius: 4px;
+        }
+
+        .legend-color.required { background: var(--success); }
+        .legend-color.conditional { background: var(--warning); }
+        .legend-color.optional { background: var(--gray); }
+
+        .tips {
+            background: #fefce8;
+            border: 1px solid #fde047;
+            border-radius: 8px;
+            padding: 1.5rem;
+            margin-top: 2rem;
+        }
+
+        .tips h3 {
+            color: var(--warning);
+            margin-bottom: 1rem;
+        }
+
+        .tips ul {
+            margin-left: 1.5rem;
+        }
+
+        .tips li {
+            margin-bottom: 0.5rem;
+        }
+
+        .hidden {
+            display: none !important;
+        }
+
+        @media (max-width: 768px) {
+            .flow-diagram {
+                flex-direction: column;
+            }
+            .arrow {
+                transform: rotate(90deg);
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Presentation Structure Guide</h1>
+            <p class="subtitle">Phone Analysis Sales Deck - "Diagnose to Prescribe" Framework</p>
+        </header>
+
+        <div class="framework">
+            <h2>The Medical Framework</h2>
+            <p style="margin-bottom: 1rem;">This presentation follows a physician-friendly "Diagnose → Prescribe" narrative that mirrors clinical thinking:</p>
+
+            <div class="flow-diagram">
+                <div class="flow-step hook">
+                    <strong>Hook</strong>
+                    <span>Build Trust</span>
+                </div>
+                <span class="arrow">→</span>
+                <div class="flow-step diagnosis">
+                    <strong>Diagnosis</strong>
+                    <span>Show Symptoms</span>
+                </div>
+                <span class="arrow">→</span>
+                <div class="flow-step prognosis">
+                    <strong>Prognosis</strong>
+                    <span>Cost of Inaction</span>
+                </div>
+                <span class="arrow">→</span>
+                <div class="flow-step treatment">
+                    <strong>Treatment</strong>
+                    <span>The Solution</span>
+                </div>
+            </div>
+
+            <p style="color: var(--gray); font-size: 0.9rem; text-align: center;">
+                Key insight: Move the "aha moment" (Process vs Capacity) to slide 7, not slide 16. Executives decide in the first 5 minutes.
+            </p>
+        </div>
+
+        <div class="mode-toggle">
+            <button class="mode-btn active" onclick="setMode('short')">Short (15-20 min)</button>
+            <button class="mode-btn" onclick="setMode('full')">Full (30-45 min)</button>
+        </div>
+
+        <div class="legend">
+            <div class="legend-item">
+                <div class="legend-color required"></div>
+                <span><strong>Required</strong> - Always include</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color conditional"></div>
+                <span><strong>Conditional</strong> - Include if applicable</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color optional"></div>
+                <span><strong>Optional</strong> - Can skip for time</span>
+            </div>
+        </div>
+
+        <!-- OPENING SECTION -->
+        <div class="section">
+            <div class="section-header opening">
+                <h3>OPENING: Hook & Credibility</h3>
+                <span class="time">2-3 minutes</span>
+            </div>
+            <div class="slides-grid">
+                <div class="slide-card required">
+                    <div class="slide-header">
+                        <span class="slide-number">Slide 1</span>
+                        <span class="slide-tag required">Required</span>
+                    </div>
+                    <div class="slide-title">Title + Promise</div>
+                    <div class="slide-purpose">Client name, data summary, compelling tagline. Sets the stage.</div>
+                    <div class="slide-question">"What are we looking at today?"</div>
+                </div>
+
+                <div class="slide-card required">
+                    <div class="slide-header">
+                        <span class="slide-number">Slide 2</span>
+                        <span class="slide-tag required">Required</span>
+                    </div>
+                    <div class="slide-title">The Question</div>
+                    <div class="slide-purpose">"What happens when patients can't reach you?" Creates curiosity.</div>
+                    <div class="slide-question">"Why should I care about this?"</div>
+                </div>
+
+                <div class="slide-card required">
+                    <div class="slide-header">
+                        <span class="slide-number">Slide 3</span>
+                        <span class="slide-tag required">Required</span>
+                    </div>
+                    <div class="slide-title">Who We Are</div>
+                    <div class="slide-purpose">Brief MyBCAT intro + HIPAA compliance. Builds early trust.</div>
+                    <div class="slide-question">"Who is presenting this and can I trust them?"</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- DIAGNOSIS SECTION -->
+        <div class="section">
+            <div class="section-header diagnosis">
+                <h3>DIAGNOSIS: The Discovery</h3>
+                <span class="time">5-7 minutes</span>
+            </div>
+            <div class="slides-grid">
+                <div class="slide-card required">
+                    <div class="slide-header">
+                        <span class="slide-number">Slide 4</span>
+                        <span class="slide-tag required">Required</span>
+                    </div>
+                    <div class="slide-title">Section Divider</div>
+                    <div class="slide-purpose">"What Your Data Reveals" - Transition to data section.</div>
+                    <div class="slide-question">"What did you find?"</div>
+                </div>
+
+                <div class="slide-card required">
+                    <div class="slide-header">
+                        <span class="slide-number">Slide 5</span>
+                        <span class="slide-tag required">Required</span>
+                    </div>
+                    <div class="slide-title">Executive Summary</div>
+                    <div class="slide-purpose">4 key numbers: Total calls, answer rate, missed calls, revenue leak.</div>
+                    <div class="slide-question">"What are the key numbers?"</div>
+                </div>
+
+                <div class="slide-card required">
+                    <div class="slide-header">
+                        <span class="slide-number">Slide 6</span>
+                        <span class="slide-tag required">Required</span>
+                    </div>
+                    <div class="slide-title">The Grade</div>
+                    <div class="slide-purpose">Answer rate with A-F grading scale. Simple benchmark.</div>
+                    <div class="slide-question">"How do we compare to others?"</div>
+                </div>
+
+                <div class="slide-card required">
+                    <div class="slide-header">
+                        <span class="slide-number">Slide 7</span>
+                        <span class="slide-tag required">Required</span>
+                    </div>
+                    <div class="slide-title">Root Cause Discovery</div>
+                    <div class="slide-purpose"><strong>THE AHA MOMENT:</strong> Process vs Capacity pie chart. Shows expertise.</div>
+                    <div class="slide-question">"Is this a staffing problem or a process problem?"</div>
+                </div>
+
+                <div class="slide-card required">
+                    <div class="slide-header">
+                        <span class="slide-number">Slide 8</span>
+                        <span class="slide-tag required">Required</span>
+                    </div>
+                    <div class="slide-title">Pain Windows</div>
+                    <div class="slide-purpose">Heatmap + 3 worst hours. Visual proof of when problems occur.</div>
+                    <div class="slide-question">"When are we missing calls?"</div>
+                </div>
+
+                <div class="slide-card required">
+                    <div class="slide-header">
+                        <span class="slide-number">Slide 9</span>
+                        <span class="slide-tag required">Required</span>
+                    </div>
+                    <div class="slide-title">Weekly Impact</div>
+                    <div class="slide-purpose">"X people/week don't get through" - Makes it human.</div>
+                    <div class="slide-question">"How many patients are affected?"</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- PROGNOSIS SECTION -->
+        <div class="section">
+            <div class="section-header prognosis">
+                <h3>PROGNOSIS: The Cost</h3>
+                <span class="time">3-4 minutes</span>
+            </div>
+            <div class="slides-grid">
+                <div class="slide-card required">
+                    <div class="slide-header">
+                        <span class="slide-number">Slide 10</span>
+                        <span class="slide-tag required">Required</span>
+                    </div>
+                    <div class="slide-title">Section Divider</div>
+                    <div class="slide-purpose">"What This Costs You" - Transition to impact section.</div>
+                    <div class="slide-question">"So what does this mean for my business?"</div>
+                </div>
+
+                <div class="slide-card required">
+                    <div class="slide-header">
+                        <span class="slide-number">Slide 11</span>
+                        <span class="slide-tag required">Required</span>
+                    </div>
+                    <div class="slide-title">Revenue Impact</div>
+                    <div class="slide-purpose">Conservative $ calculation with clear assumptions.</div>
+                    <div class="slide-question">"How much money are we losing?"</div>
+                </div>
+
+                <div class="slide-card required">
+                    <div class="slide-header">
+                        <span class="slide-number">Slide 12</span>
+                        <span class="slide-tag required">Required</span>
+                    </div>
+                    <div class="slide-title">Cost of Inaction</div>
+                    <div class="slide-purpose">Compound effects: reputation, referrals, staff burden.</div>
+                    <div class="slide-question">"What happens if we do nothing?"</div>
+                </div>
+
+                <div class="slide-card required">
+                    <div class="slide-header">
+                        <span class="slide-number">Slide 13</span>
+                        <span class="slide-tag required">Required</span>
+                    </div>
+                    <div class="slide-title">Three Paths Comparison</div>
+                    <div class="slide-purpose">Do nothing vs Hire staff vs Fix with MyBCAT. Clear choice architecture.</div>
+                    <div class="slide-question">"What are my options?"</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- TREATMENT SECTION -->
+        <div class="section">
+            <div class="section-header treatment">
+                <h3>TREATMENT: The Solution</h3>
+                <span class="time">5-6 minutes</span>
+            </div>
+            <div class="slides-grid">
+                <div class="slide-card required">
+                    <div class="slide-header">
+                        <span class="slide-number">Slide 14</span>
+                        <span class="slide-tag required">Required</span>
+                    </div>
+                    <div class="slide-title">Section Divider</div>
+                    <div class="slide-purpose">"How to Fix It" - Transition to solution section.</div>
+                    <div class="slide-question">"What do you recommend?"</div>
+                </div>
+
+                <div class="slide-card required">
+                    <div class="slide-header">
+                        <span class="slide-number">Slide 15</span>
+                        <span class="slide-tag required">Required</span>
+                    </div>
+                    <div class="slide-title">What We Provide</div>
+                    <div class="slide-purpose">Services overview + differentiation from alternatives.</div>
+                    <div class="slide-question">"What exactly do you do?"</div>
+                </div>
+
+                <div class="slide-card required">
+                    <div class="slide-header">
+                        <span class="slide-number">Slide 16</span>
+                        <span class="slide-tag required">Required</span>
+                    </div>
+                    <div class="slide-title">Proof Points</div>
+                    <div class="slide-purpose">Results metrics + test numbers. Social proof.</div>
+                    <div class="slide-question">"Does this actually work?"</div>
+                </div>
+
+                <div class="slide-card required">
+                    <div class="slide-header">
+                        <span class="slide-number">Slide 17</span>
+                        <span class="slide-tag required">Required</span>
+                    </div>
+                    <div class="slide-title">FTE-Based Pricing</div>
+                    <div class="slide-purpose">Cost comparison table: MyBCAT vs In-House. Clear ROI.</div>
+                    <div class="slide-question">"How much does this cost?"</div>
+                </div>
+
+                <div class="slide-card required">
+                    <div class="slide-header">
+                        <span class="slide-number">Slide 18</span>
+                        <span class="slide-tag required">Required</span>
+                    </div>
+                    <div class="slide-title">Your Options</div>
+                    <div class="slide-purpose">Two clear service tiers. Simplifies decision.</div>
+                    <div class="slide-question">"Which option is right for us?"</div>
+                </div>
+
+                <div class="slide-card required">
+                    <div class="slide-header">
+                        <span class="slide-number">Slide 19</span>
+                        <span class="slide-tag required">Required</span>
+                    </div>
+                    <div class="slide-title">Next Steps</div>
+                    <div class="slide-purpose">Clear CTA: "Which option? When to start?"</div>
+                    <div class="slide-question">"What do I do now?"</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- EXTENDED DATA SECTION -->
+        <div class="section extended-section">
+            <div class="section-header extended">
+                <h3>EXTENDED DATA (For Longer Meetings)</h3>
+                <span class="time">+10-15 minutes</span>
+            </div>
+            <div class="slides-grid">
+                <div class="slide-card optional extended-only">
+                    <div class="slide-header">
+                        <span class="slide-number">Slide 20</span>
+                        <span class="slide-tag optional">Optional</span>
+                    </div>
+                    <div class="slide-title">Data Source & Methodology</div>
+                    <div class="slide-purpose">How data was collected and analyzed.</div>
+                    <div class="slide-question">"How did you get this data?"</div>
+                </div>
+
+                <div class="slide-card optional extended-only">
+                    <div class="slide-header">
+                        <span class="slide-number">Slide 21</span>
+                        <span class="slide-tag optional">Optional</span>
+                    </div>
+                    <div class="slide-title">Open vs After Hours</div>
+                    <div class="slide-purpose">Breakdown by business hours.</div>
+                    <div class="slide-question">"When are we getting calls?"</div>
+                </div>
+
+                <div class="slide-card optional extended-only">
+                    <div class="slide-header">
+                        <span class="slide-number">Slide 22</span>
+                        <span class="slide-tag optional">Optional</span>
+                    </div>
+                    <div class="slide-title">Hourly Distribution</div>
+                    <div class="slide-purpose">Calls by hour chart.</div>
+                    <div class="slide-question">"What's our hourly pattern?"</div>
+                </div>
+
+                <div class="slide-card optional extended-only">
+                    <div class="slide-header">
+                        <span class="slide-number">Slide 23</span>
+                        <span class="slide-tag optional">Optional</span>
+                    </div>
+                    <div class="slide-title">Daily Pattern</div>
+                    <div class="slide-purpose">Calls by day of week.</div>
+                    <div class="slide-question">"Which days are busiest?"</div>
+                </div>
+
+                <div class="slide-card optional extended-only">
+                    <div class="slide-header">
+                        <span class="slide-number">Slide 24</span>
+                        <span class="slide-tag optional">Optional</span>
+                    </div>
+                    <div class="slide-title">Concurrency Analysis</div>
+                    <div class="slide-purpose">Simultaneous calls distribution.</div>
+                    <div class="slide-question">"How many calls come in at once?"</div>
+                </div>
+
+                <div class="slide-card optional extended-only">
+                    <div class="slide-header">
+                        <span class="slide-number">Slide 25</span>
+                        <span class="slide-tag optional">Optional</span>
+                    </div>
+                    <div class="slide-title">FTE Deep Dive</div>
+                    <div class="slide-purpose">Staffing capacity model details.</div>
+                    <div class="slide-question">"How did you calculate FTE?"</div>
+                </div>
+
+                <div class="slide-card conditional extended-only">
+                    <div class="slide-header">
+                        <span class="slide-number">Slide 26</span>
+                        <span class="slide-tag conditional">Conditional</span>
+                    </div>
+                    <div class="slide-title">Location Comparison</div>
+                    <div class="slide-purpose">Multi-location breakdown. Only if 2+ locations.</div>
+                    <div class="slide-question">"How do our locations compare?"</div>
+                </div>
+
+                <div class="slide-card optional extended-only">
+                    <div class="slide-header">
+                        <span class="slide-number">Slide 27</span>
+                        <span class="slide-tag optional">Optional</span>
+                    </div>
+                    <div class="slide-title">Month-Over-Month</div>
+                    <div class="slide-purpose">Trend analysis if data spans multiple months.</div>
+                    <div class="slide-question">"Is it getting better or worse?"</div>
+                </div>
+
+                <div class="slide-card optional extended-only">
+                    <div class="slide-header">
+                        <span class="slide-number">Slide 28</span>
+                        <span class="slide-tag optional">Optional</span>
+                    </div>
+                    <div class="slide-title">Key Data Findings</div>
+                    <div class="slide-purpose">Summary of all data insights.</div>
+                    <div class="slide-question">"What's the bottom line on the data?"</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- APPENDIX SECTION -->
+        <div class="section appendix-section">
+            <div class="section-header appendix">
+                <h3>APPENDIX (Leave-Behind Reference)</h3>
+                <span class="time">Reference only</span>
+            </div>
+            <div class="slides-grid">
+                <div class="slide-card optional extended-only">
+                    <div class="slide-header">
+                        <span class="slide-number">Slide 29+</span>
+                        <span class="slide-tag optional">Optional</span>
+                    </div>
+                    <div class="slide-title">Assumptions & Methodology</div>
+                    <div class="slide-purpose">All calculation assumptions documented.</div>
+                    <div class="slide-question">"What assumptions did you make?"</div>
+                </div>
+
+                <div class="slide-card optional extended-only">
+                    <div class="slide-header">
+                        <span class="slide-number">Slide 30+</span>
+                        <span class="slide-tag optional">Optional</span>
+                    </div>
+                    <div class="slide-title">Data Integrity Notes</div>
+                    <div class="slide-purpose">Data quality report and confidence levels.</div>
+                    <div class="slide-question">"How reliable is this data?"</div>
+                </div>
+
+                <div class="slide-card optional extended-only">
+                    <div class="slide-header">
+                        <span class="slide-number">Slide 31+</span>
+                        <span class="slide-tag optional">Optional</span>
+                    </div>
+                    <div class="slide-title">Contact Information</div>
+                    <div class="slide-purpose">Test numbers and contact details.</div>
+                    <div class="slide-question">"How do I reach you?"</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="tips">
+            <h3>Presentation Tips</h3>
+            <ul>
+                <li><strong>For skeptical doctors:</strong> Lead with HIPAA compliance and data methodology. They need to trust you before they'll trust your numbers.</li>
+                <li><strong>For busy executives:</strong> Jump to slide 7 (Root Cause) quickly. The process vs capacity insight demonstrates expertise.</li>
+                <li><strong>For multi-location practices:</strong> Include slide 26 (Location Comparison) - they want to see which site needs the most help.</li>
+                <li><strong>When time is short:</strong> Skip Extended Data (slides 20-28) entirely. Core deck (1-19) tells the complete story.</li>
+                <li><strong>For leave-behinds:</strong> Include everything. They'll review details later when considering the proposal.</li>
+                <li><strong>Never skip:</strong> Slide 7 (Root Cause), Slide 17 (FTE Pricing), Slide 19 (Next Steps) - these drive the sale.</li>
+            </ul>
+        </div>
+    </div>
+
+    <script>
+        function setMode(mode) {
+            const btns = document.querySelectorAll('.mode-btn');
+            btns.forEach(btn => btn.classList.remove('active'));
+            event.target.classList.add('active');
+
+            const extendedSlides = document.querySelectorAll('.extended-only');
+            const extendedSection = document.querySelector('.extended-section');
+            const appendixSection = document.querySelector('.appendix-section');
+
+            if (mode === 'short') {
+                extendedSlides.forEach(el => el.classList.add('hidden'));
+                extendedSection.classList.add('hidden');
+                appendixSection.classList.add('hidden');
+            } else {
+                extendedSlides.forEach(el => el.classList.remove('hidden'));
+                extendedSection.classList.remove('hidden');
+                appendixSection.classList.remove('hidden');
+            }
+        }
+
+        // Initialize in short mode
+        setMode('short');
+    </script>
+</body>
+</html>

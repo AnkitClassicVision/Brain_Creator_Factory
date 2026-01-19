@@ -6,17 +6,18 @@ import json
 import uuid
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Protocol, Callable
+from typing import Any, Dict, List, Optional, Protocol, Callable, Tuple
 from dataclasses import dataclass, field
 from enum import Enum
 
-from .brain import Brain, BrainManifest
+from .brain import Brain, BrainManifest, StopRule, ValidationRule, MinimumEnforcement
 from .graph import (
     Graph, Node, Edge, NodeType, EdgeType, Stage,
     DecisionConfig, DependencyConfig, DecompositionConfig
 )
 from .state import State, AuditEvent
 from .memory import MemoryStore, MemoryQuery, Fact, Provenance
+from .context import build_eval_env
 
 
 class RunOutcome(str, Enum):
@@ -472,6 +473,24 @@ class BrainController:
         if not node.gate:
             return NodeResult(success=False, error="Gate node missing gate_config")
 
+        allowed_builtins = {
+            "len": len,
+            "any": any,
+            "all": all,
+            "min": min,
+            "max": max,
+            "sum": sum,
+            "abs": abs,
+            "round": round,
+            "str": str,
+            "int": int,
+            "float": float,
+            "bool": bool,
+            "True": True,
+            "False": False,
+            "None": None,
+        }
+
         # Evaluate each criterion
         passed = True
         results = []
@@ -482,8 +501,8 @@ class BrainController:
 
             # Evaluate the check expression
             try:
-                context = state.to_context()
-                result = eval(check, {"__builtins__": {"len": len, "all": all, "any": any}}, context)
+                env = build_eval_env(state.to_context())
+                result = eval(check, {"__builtins__": allowed_builtins}, env)
                 results.append({"name": name, "passed": bool(result)})
                 if not result:
                     passed = False
@@ -494,6 +513,12 @@ class BrainController:
         state_patch = {
             "verification_passed": passed,
             "gate_results": results,
+            "gates": {
+                node.id: {
+                    "passed": passed,
+                    "results": results,
+                }
+            },
         }
 
         # Record learning signal
@@ -524,7 +549,7 @@ class BrainController:
             return NodeResult(success=False, error="Decision node missing decision_config")
 
         config = node.decision
-        context = state.to_context()
+        env = build_eval_env(state.to_context())
 
         # Check precondition if specified
         if config.precondition:
@@ -537,7 +562,7 @@ class BrainController:
                 precondition_met = eval(
                     config.precondition,
                     {"__builtins__": allowed_builtins},
-                    context
+                    env
                 )
                 if not precondition_met:
                     return NodeResult(
@@ -552,7 +577,7 @@ class BrainController:
                 )
 
         # Get the variable value to evaluate
-        variable_value = self._get_nested_value(context, config.variable)
+        variable_value = self._get_nested_value(env, config.variable)
 
         # Evaluate rules in order
         matched_target = None
@@ -795,14 +820,7 @@ class BrainController:
 
     def _render_prompt(self, node: Node, state: State, dredged: Dict[str, str]) -> str:
         """Render the node prompt with state and memory."""
-        prompt = node.prompt
-
-        # Simple template substitution
-        context = state.to_context()
-        context["dredged_memory"] = dredged
-        context["available_skills"] = self.manifest.skills
-
-        return self._render_template(prompt, state, dredged)
+        return self._render_template(node.prompt, state, dredged)
 
     def _render_template(
         self,
@@ -813,9 +831,14 @@ class BrainController:
         """Render a template string with state values."""
         import re
 
-        context = state.to_context()
+        base_context = state.to_context()
         if dredged:
-            context["dredged_memory"] = dredged
+            base_context["dredged_memory"] = dredged
+
+        base_context["available_skills"] = self.manifest.skills
+
+        context = dict(base_context)
+        context["state"] = base_context
 
         def replace_var(match):
             path = match.group(1)
@@ -928,6 +951,166 @@ class BrainController:
                 "Memory conflicts during write",
                 {"conflicts": conflicts}
             )
+
+    # ═══════════════════════════════════════════════════════════════════
+    # CONSTRAINT ENFORCEMENT - Stop Rules, Validation, Minimums
+    # These methods enforce LLM behavior guardrails to prevent deviation
+    # ═══════════════════════════════════════════════════════════════════
+
+    def check_stop_rules(self, state: State) -> Optional[StopRule]:
+        """
+        Check if any stop rule should be triggered.
+
+        Stop rules are critical guardrails that prevent LLM deviation.
+        When triggered, execution MUST halt and ask the user.
+
+        Returns:
+            The triggered StopRule if any condition is met, None otherwise
+        """
+        if not self.manifest.stop_rules:
+            return None
+
+        context = state.to_context()
+
+        for stop_rule in self.manifest.stop_rules:
+            if stop_rule.matches(context):
+                # Record the stop condition
+                state.signals.record_observation(
+                    f"Stop rule triggered: {stop_rule.condition}",
+                    {
+                        "action": stop_rule.action,
+                        "reason": stop_rule.reason,
+                    }
+                )
+                return stop_rule
+
+        return None
+
+    def validate_output(
+        self,
+        output: Dict[str, Any],
+        state: State
+    ) -> List[Tuple[ValidationRule, str]]:
+        """
+        Validate LLM output against all validation rules.
+
+        Returns:
+            List of (failed_rule, error_message) tuples for any failures
+        """
+        failures = []
+
+        if not self.manifest.validation_rules:
+            return failures
+
+        for rule in self.manifest.validation_rules:
+            is_valid, error = rule.validate(output, state.to_context())
+            if not is_valid:
+                failures.append((rule, error))
+                state.signals.record_failure(
+                    state.current_node or "unknown",
+                    f"Validation failed: {rule.name}",
+                    {"error": error, "severity": rule.severity}
+                )
+
+        return failures
+
+    def apply_minimum_enforcements(
+        self,
+        state: State
+    ) -> List[Dict[str, Any]]:
+        """
+        Apply minimum value enforcements to state.
+
+        When a calculated value falls below the minimum:
+        - If auto_correct=True: set to minimum and log
+        - If auto_correct=False: add to stop conditions
+
+        Returns:
+            List of corrections applied (field, original, corrected)
+        """
+        corrections = []
+
+        if not self.manifest.minimum_enforcements:
+            return corrections
+
+        for enforcement in self.manifest.minimum_enforcements:
+            # Get current value from state
+            current_value = state.get(enforcement.field)
+
+            if current_value is None:
+                continue
+
+            try:
+                numeric_value = float(current_value)
+            except (ValueError, TypeError):
+                continue
+
+            if numeric_value < enforcement.minimum:
+                if enforcement.auto_correct:
+                    # Apply correction
+                    state.set(enforcement.field, enforcement.minimum)
+
+                    correction = {
+                        "field": enforcement.field,
+                        "original": numeric_value,
+                        "corrected": enforcement.minimum,
+                        "message": enforcement.error_message,
+                    }
+                    corrections.append(correction)
+
+                    if enforcement.log_correction:
+                        state.signals.record_observation(
+                            f"Minimum enforcement applied: {enforcement.field}",
+                            correction
+                        )
+                else:
+                    # Record as stop condition
+                    state.signals.record_failure(
+                        state.current_node or "unknown",
+                        f"Value below minimum: {enforcement.field}",
+                        {
+                            "value": numeric_value,
+                            "minimum": enforcement.minimum,
+                            "error": enforcement.error_message,
+                        }
+                    )
+
+        return corrections
+
+    def enforce_constraints(self, state: State, node: Node) -> Optional[str]:
+        """
+        Run all constraint enforcement checks after node execution.
+
+        This is the main enforcement point that should be called after
+        each node execution to ensure LLM outputs meet requirements.
+
+        Returns:
+            Error message if enforcement failed and should stop, None if ok
+        """
+        # Check stop rules
+        triggered = self.check_stop_rules(state)
+        if triggered:
+            return f"STOP: {triggered.condition} - {triggered.action}"
+
+        # Apply minimum enforcements
+        corrections = self.apply_minimum_enforcements(state)
+        if corrections:
+            state.add_audit(
+                node_id=node.id,
+                action="minimum_enforcement",
+                summary=f"Applied {len(corrections)} minimum corrections",
+                details={"corrections": corrections}
+            )
+
+        return None
+
+    def get_must_do_checklist(self) -> List[str]:
+        """Get the list of must_do constraints for this brain."""
+        return [c.description for c in self.manifest.constraints if c.type == "must_do"]
+
+    def get_must_not_checklist(self) -> List[str]:
+        """Get the list of must_not constraints for this brain."""
+        return [c.description for c in self.manifest.constraints if c.type == "must_not"]
 
     def _determine_terminal_outcome(self, node_id: str) -> RunOutcome:
         """Determine the run outcome based on terminal node."""

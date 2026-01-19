@@ -1,0 +1,79 @@
+# Business Constants Template
+# Copy to: config/<brain_name>_constants.yaml
+# Replace {{placeholders}} with actual values
+# REQUIRED: Every brain with business logic needs a constants file
+
+# ═══════════════════════════════════════════════════════════════════
+# BUSINESS MINIMUMS
+# Values that cannot go below these thresholds
+# Prevents: Business Rule Ignorance blind spot
+# ═══════════════════════════════════════════════════════════════════
+minimums:
+  # Example: pricing minimums
+  # EXAMPLE_MIN: 100              # $100 minimum for example
+  {{minimum_1_name}}: {{minimum_1_value}}    # {{minimum_1_description}}
+
+# ═══════════════════════════════════════════════════════════════════
+# DATA QUALITY THRESHOLDS
+# STOP workflow if quality metrics fall below these
+# Prevents: Implicit Assumptions blind spot
+# ═══════════════════════════════════════════════════════════════════
+thresholds:
+  UNKNOWN_DATA_MAX_PCT: 10       # STOP if unknown data > 10%
+  RECONCILIATION_TOLERANCE: 1.0  # Max allowed diff between methods
+  # {{threshold_name}}: {{threshold_value}}
+
+# ═══════════════════════════════════════════════════════════════════
+# REQUIRED OUTPUTS
+# Files that MUST be generated (verify existence + size > 0)
+# Prevents: Output Trust blind spot
+# ═══════════════════════════════════════════════════════════════════
+required_outputs:
+  - "{{output_file_1}}"
+  - "{{output_file_2}}"
+
+# Minimum file sizes (prevent empty files)
+min_file_sizes:
+  default_bytes: 100             # Default minimum file size
+
+# ═══════════════════════════════════════════════════════════════════
+# REQUIRED TEMPLATES/REFERENCES
+# Files that MUST exist before workflow starts
+# Prevents: Helpfulness Bias (no improvisation)
+# ═══════════════════════════════════════════════════════════════════
+required_templates:
+  - path: "templates/{{template_name}}"
+    description: "{{template_purpose}}"
+    required_elements:
+      - "{{required_element_1}}"
+    forbidden_patterns:
+      - "{{forbidden_pattern_1}}"
+
+required_references:
+  - path: "references/{{reference_name}}"
+    description: "{{reference_purpose}}"
+
+# ═══════════════════════════════════════════════════════════════════
+# CRITICAL ITEMS
+# Items requiring extra validation
+# Prevents: Equal Treatment blind spot
+# ═══════════════════════════════════════════════════════════════════
+critical_items:
+  - item: 1
+    name: "{{critical_item_1_name}}"
+    required_fields:
+      - "{{field_1}}"
+      - "{{field_2}}"
+    validation_rules:
+      - "{{validation_rule_1}}"
+
+# ═══════════════════════════════════════════════════════════════════
+# FORMAT REQUIREMENTS
+# Structure that MUST be used (no simplification)
+# Prevents: Format Blindness blind spot
+# ═══════════════════════════════════════════════════════════════════
+format_requirements:
+  # Example: required HTML classes
+  required_classes: []
+  # Example: forbidden patterns (e.g., markdown tables when HTML required)
+  forbidden_patterns: []

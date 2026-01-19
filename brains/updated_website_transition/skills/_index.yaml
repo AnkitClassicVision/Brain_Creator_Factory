@@ -1,0 +1,109 @@
+# Skills Registry for Website Transition Brain
+# Lists available skills and their configuration
+
+skills:
+  # Data collection skills
+  - id: "google-search-console"
+    purpose: "Pull traffic data from GSC"
+    required: true
+    capabilities:
+      - "export_performance_data"
+      - "get_top_queries"
+      - "get_top_pages"
+      - "get_external_links"
+
+  - id: "ahrefs"
+    purpose: "Pull backlink data"
+    required: false
+    alternative: "dataforseo"
+    capabilities:
+      - "backlinks_by_page"
+      - "anchor_text_distribution"
+      - "broken_backlinks"
+
+  - id: "dataforseo"
+    purpose: "SERP and keyword research"
+    required: false
+    capabilities:
+      - "serp_analysis"
+      - "keyword_data"
+      - "competitor_analysis"
+
+  # Crawling skills
+  - id: "web_fetch"
+    purpose: "Fetch and crawl URLs"
+    required: true
+    capabilities:
+      - "fetch_url"
+      - "check_status_code"
+      - "extract_metadata"
+
+  # Deployment skills
+  - id: "vercel"
+    purpose: "Deploy to Vercel"
+    required: true
+    capabilities:
+      - "deploy"
+      - "configure_redirects"
+      - "manage_domains"
+      - "environment_variables"
+
+  - id: "github-operations-manager"
+    purpose: "Git and GitHub operations"
+    required: true
+    capabilities:
+      - "create_repo"
+      - "create_branch"
+      - "commit"
+      - "push"
+      - "create_pr"
+
+  # Verification skills
+  - id: "visual-verification"
+    purpose: "Screenshot and visual QA"
+    required: false
+    capabilities:
+      - "capture_screenshot"
+      - "compare_screenshots"
+      - "verify_layout"
+
+# Skill usage by phase
+phase_skills:
+  phase0_preflight:
+    - "google-search-console"  # Verify access
+    - "web_fetch"              # Verify crawl capability
+
+  phase1_keywords:
+    - "dataforseo"             # Keyword research
+    - "google-search-console"  # Current rankings
+
+  phase2_mapping:
+    - "web_fetch"              # Crawl site
+    - "google-search-console"  # Traffic data
+    - "ahrefs"                 # Backlink data
+
+  phase3_architecture:
+    - "web_fetch"              # Verify destinations
+
+  phase4_build:
+    - "github-operations-manager"
+    - "vercel"
+
+  phase5_techseo:
+    - "web_fetch"              # Validate URLs
+    - "visual-verification"    # Check rendering
+
+  phase6_performance:
+    - "web_fetch"              # Run PageSpeed checks
+    - "visual-verification"    # Visual verification
+
+  phase7_qa:
+    - "web_fetch"              # Crawl staging
+    - "visual-verification"    # Visual QA
+
+  phase8_launch:
+    - "vercel"                 # DNS/deployment
+    - "google-search-console"  # Submit sitemap
+
+  phase9_postlaunch:
+    - "google-search-console"  # Monitor metrics

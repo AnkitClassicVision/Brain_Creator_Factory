@@ -1,0 +1,96 @@
+# Universal Brain Template - State Schema
+# Replace {{placeholders}} with actual values
+# INCLUDES: Pre-flight and Validation Tracking (REQUIRED for all brains)
+
+state:
+  brain_id: "{{brain_id}}"
+  run_id: "<generated at runtime>"
+  started_at: null
+
+  # Current position
+  current_node: null
+  stage: "not_started"
+
+  # User input
+  user_request: ""
+
+  # ═══════════════════════════════════════════════════════════════════
+  # PRE-FLIGHT VALIDATION STATE (REQUIRED)
+  # Tracks validation status to prevent LLM improvisation
+  # ═══════════════════════════════════════════════════════════════════
+  preflight:
+    # Track dependency checks
+    dependencies_exist: false
+    missing_dependencies: []
+
+    # Track structure validation
+    structure_valid: false
+    structure_errors: []
+    has_forbidden_patterns: false
+    forbidden_patterns_found: []
+
+    # Overall preflight status
+    all_valid: false
+
+  # ═══════════════════════════════════════════════════════════════════
+  # BUSINESS CONSTANTS (loaded from config file)
+  # Prevents: Business Rule Ignorance blind spot
+  # ═══════════════════════════════════════════════════════════════════
+  config_loaded: false
+  config: {}
+
+  # ═══════════════════════════════════════════════════════════════════
+  # VALIDATION TRACKING (REQUIRED)
+  # Audit trail for what has been validated
+  # Prevents: Partial Completion, Output Trust blind spots
+  # ═══════════════════════════════════════════════════════════════════
+  validation:
+    # Track minimums enforcement
+    minimums_applied: {}
+    # Example: { "some_minimum": { "calculated": 50, "enforced": 100, "reason": "below threshold" } }
+
+    # Track output verification
+    outputs_verified: {}
+    # Example: { "output_file.ext": { "exists": true, "size_bytes": 12345 } }
+
+    # Track critical items (customize per brain)
+    critical_items_validated: {}
+    # Example: { "item_1": true, "item_2": false }
+
+    # Track QA completion
+    qa_completed:
+      automated: false
+      visual: false
+      all_checks_passed: false
+
+    # Track template verification
+    templates_verified:
+      no_unreplaced_placeholders: false
+      all_paths_resolved: false
+
+  # ═══════════════════════════════════════════════════════════════════
+  # WORKING DATA
+  # ═══════════════════════════════════════════════════════════════════
+  data: {}
+
+  # Counters for loop control
+  counters:
+    total_steps: 0
+    node_visits: {}
+    retries: {}
+    total_retries: 0
+
+  # Parallel task tracking
+  parallel:
+    active_tasks: []
+    completed_tasks: []
+    failed_tasks: []
+
+  # Audit trail
+  audit: []
+
+  # Learning signals
+  signals:
+    successes: []
+    failures: []
+    improvements: []

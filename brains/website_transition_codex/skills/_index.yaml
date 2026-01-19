@@ -1,0 +1,13 @@
+skills:
+  name: "website_transition_codex_skills"
+  version: "1.0.0"
+  description: "Skills registry for SEO-focused WordPress → GitHub/Vercel website migration"
+
+  # External skills (from system / runtime)
+  external: []
+
+  # Brain-specific skills (defined locally)
+  local: []
+
+  # Skill dependencies
+  dependencies: {}

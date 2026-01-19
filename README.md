@@ -246,16 +246,26 @@ cc_brain_factory/
 │
 ├── templates/                 # Brain templates
 │   └── universal/            # Universal workflow template
-│       └── graph.yaml
+│       ├── claude.md         # Orchestrator template
+│       ├── graph.yaml        # Execution graph
+│       └── state.yaml        # State template
 │
 ├── brains/                    # Created brains live here
 │   └── <brain_name>/
-│       ├── brain.yaml        # Manifest
+│       ├── claude.md         # ORCHESTRATOR - Entry point (REQUIRED)
+│       ├── brain.yaml        # Manifest: rules, constraints
 │       ├── graph.yaml        # Execution graph
+│       ├── state.yaml        # Runtime state
+│       ├── config/           # Business constants
+│       ├── references/       # Required specs
+│       ├── scripts/          # Validation scripts
 │       ├── memory.jsonl      # Long-term memory
 │       ├── skills/           # Brain-specific skills
 │       ├── runs/             # Execution history
 │       └── evolution/        # Learning and changes
+│           ├── red_team.md   # Red team analysis (REQUIRED)
+│           ├── proposals.jsonl
+│           └── applied.jsonl
 │
 └── schemas/                   # JSON schemas for validation
 ```
@@ -263,6 +273,30 @@ cc_brain_factory/
 ## Brain Structure
 
 Each brain is a folder with:
+
+### claude.md (Orchestrator) - REQUIRED
+The thin orchestration layer that serves as the entry point:
+- Trigger instruction ("start")
+- Architecture diagram
+- Phase table with gates
+- References other files for details
+- Directs LLM to write code when needed
+
+```markdown
+# {Brain Name} - Orchestrator
+
+## TRIGGER
+Say **"start"** to begin.
+
+## Phases
+| Phase | Purpose | Gate |
+|-------|---------|------|
+| 0 | Pre-flight | `preflight.passed` |
+| 1 | ... | `phase_1.complete` |
+
+## Stop Rules
+See brain.yaml -> constraints.stop_rules
+```
 
 ### brain.yaml (Manifest)
 ```yaml
@@ -277,6 +311,7 @@ objectives:
   deliverables: [...]
 
 constraints:
+  stop_rules: [...]  # REQUIRED - When to halt
   must_do: [...]
   must_not: [...]
 
@@ -597,6 +632,66 @@ This makes the brain factory itself usable as an AI-guided tool.
 4. **Externalize state** - Don't rely on LLM remembering things
 5. **Write to memory** - Persist verified facts for future runs
 6. **Monitor learning** - Review proposals before approving structural changes
+
+## LLM Enforcement Requirements (CRITICAL)
+
+Every brain MUST include enforcement logic to prevent systematic LLM failures. See `controller.md` Section 2.3 for full details.
+
+### The 7 LLM Blind Spots
+
+| Blind Spot | What Happens | Prevention |
+|------------|--------------|------------|
+| **Helpfulness Bias** | LLM improvises when blocked | STOP rules with explicit halt |
+| **Format Blindness** | LLM simplifies structures | Forbidden patterns, validation |
+| **Partial Completion** | "Good enough" mentality | Explicit checklists, zero-tolerance |
+| **Business Rule Ignorance** | Pure math, no constraints | Business constants file |
+| **Implicit Assumptions** | Accepts unusual values | Threshold validation, anomaly STOP |
+| **Output Trust** | Exit code 0 = valid | File existence + size checks |
+| **Equal Treatment** | Misses critical items | Priority marking, explicit validation |
+
+### Required Brain Components
+
+Every brain MUST include:
+
+1. **STOP Rules** (`brain.yaml: constraints.stop_rules`) - Explicit halt conditions
+2. **DO NOT Rules** (`brain.yaml: constraints.must_not`) - Forbidden actions
+3. **MUST DO Rules** (`brain.yaml: constraints.must_do`) - Mandatory actions
+4. **Pre-flight Phase** (`graph.yaml`) - Phase 0 validation before main workflow
+5. **Business Constants** (`config/<workflow>_constants.yaml`) - Defined thresholds/minimums
+6. **Validation Tracking** (`state.yaml: preflight, validation`) - Audit trail for checks
+
+### Brain Creation Checklist
+
+```
+## Required Files
+[ ] claude.md - Thin orchestrator (entry point)
+[ ] brain.yaml - Constraints, rules, objectives
+[ ] graph.yaml - Nodes, edges, gates
+[ ] state.yaml - Progress tracking
+[ ] config/constants.yaml - Business constants
+
+## Manifest Requirements
+[ ] brain.yaml has stop_rules with clear semantics (HALT/CONFIRM/LOG)
+[ ] brain.yaml has must_do and must_not sections
+[ ] stop_rules cover: missing deps, validation failures, quality issues
+
+## Graph Requirements
+[ ] graph.yaml starts with preflight validation phase
+[ ] graph.yaml has preflight_blocked terminal node
+[ ] Every phase has entry and exit gates (toll gates)
+[ ] No phase can be skipped without failing a gate
+
+## State Requirements
+[ ] state.yaml has preflight section
+[ ] state.yaml has validation tracking for all gates
+[ ] Each phase has completion tracking fields
+
+## Red Team Validation (REQUIRED)
+[ ] Red team analysis completed
+[ ] All CRITICAL/HIGH findings fixed
+[ ] Toll gates verified at every phase boundary
+[ ] evolution/red_team.md documents findings and sign-off
+```
 
 ## Example Use Cases
 

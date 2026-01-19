@@ -1,0 +1,1414 @@
+graph:
+  name: "updated_website_transition"
+  version: "1.0.0"
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# ENTRY AND EXIT POINTS
+# ═══════════════════════════════════════════════════════════════════════════════
+
+start_node: "preflight_check"
+terminal_nodes:
+  - "success"
+  - "failure"
+  - "escalate"
+  - "preflight_blocked"
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# NODES
+# ═══════════════════════════════════════════════════════════════════════════════
+
+nodes:
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # PHASE 0: PRE-FLIGHT VALIDATION
+  # ─────────────────────────────────────────────────────────────────────────────
+
+  - id: "preflight_check"
+    type: "gate"
+    stage: "preflight"
+    purpose: "Verify required tools and data sources are available"
+    prompt: |
+      PRE-FLIGHT CHECK: Verify we have what we need to proceed.
+
+      Check the following:
+      1. GSC access (API or existing export file)
+      2. Crawl capability (Screaming Frog, Sitebulb, or web_fetch skill)
+      3. Backlink data source (optional but recommended)
+      4. Config file exists: config/migration_constants.yaml
+
+      Output:
+      {
+        "gsc_accessible": true|false,
+        "gsc_method": "api"|"export_file"|null,
+        "crawl_capability": true|false,
+        "crawl_tool": "screaming_frog"|"web_fetch"|"sitebulb"|null,
+        "backlink_tool_available": true|false,
+        "config_exists": true|false,
+        "blocking_issues": ["list of critical missing items"],
+        "can_proceed": true|false
+      }
+
+    gate_config:
+      criteria:
+        - name: "gsc_available"
+          check: "state.preflight.gsc_accessible == true"
+        - name: "crawl_available"
+          check: "state.preflight.crawl_capability == true"
+        - name: "config_loaded"
+          check: "state.preflight.config_loaded == true"
+      on_pass: "preflight_config"
+      on_fail: "preflight_blocked"
+
+    state_writes:
+      - path: "preflight.gsc_accessible"
+        from: "output.gsc_accessible"
+      - path: "preflight.crawl_capability"
+        from: "output.crawl_capability"
+
+  - id: "preflight_config"
+    type: "tributary"
+    stage: "preflight"
+    purpose: "Load and validate business constants from config"
+    skill: "file_read"
+    parameters:
+      path: "config/migration_constants.yaml"
+
+    state_writes:
+      - path: "config"
+        from: "output"
+      - path: "preflight.config_loaded"
+        value: true
+      - path: "preflight.config_valid"
+        value: true
+
+  - id: "preflight_gate"
+    type: "gate"
+    stage: "preflight"
+    purpose: "Final pre-flight validation"
+    gate_config:
+      criteria:
+        - name: "all_preflight_passed"
+          check: "state.preflight.all_checks_passed == true"
+        - name: "config_loaded"
+          check: "state.preflight.config_loaded == true"
+        - name: "no_blocking_issues"
+          check: "len(state.preflight.blocking_issues) == 0"
+      on_pass: "intake"
+      on_fail: "preflight_blocked"
+
+  - id: "preflight_blocked"
+    type: "terminal"
+    stage: "preflight"
+    purpose: "STOP - Pre-flight validation failed"
+    terminal_config:
+      outcome: "blocked"
+      reason: "preflight_failed"
+      message: "Pre-flight validation failed. Required tools or data are missing."
+      action: "ask_user"
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # INTAKE: Gather user information
+  # ─────────────────────────────────────────────────────────────────────────────
+
+  - id: "intake"
+    type: "flow"
+    stage: "intake"
+    purpose: "Gather essential information about the migration"
+    prompt: |
+      INTAKE: Gather migration requirements.
+
+      Ask the user for (if not already provided):
+      1. Current domain URL
+      2. Business type (one-liner)
+      3. City/region for local SEO
+      4. Which pages currently drive leads (if known)
+      5. Content editing workflow preference (dev-only PRs vs CMS)
+
+      Output:
+      {
+        "domain": "example.com",
+        "business_type": "optometry practice",
+        "city_region": "Austin, TX",
+        "lead_pages": ["contact", "services/eye-exam"],
+        "content_workflow": "cms" | "pr_only",
+        "ready_to_proceed": true|false,
+        "clarification_needed": ["questions if any"]
+      }
+
+    state_writes:
+      - path: "domain"
+        from: "output.domain"
+      - path: "business_type"
+        from: "output.business_type"
+      - path: "city_region"
+        from: "output.city_region"
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # PHASE 1: KEYWORD STRATEGY VALIDATION
+  # ─────────────────────────────────────────────────────────────────────────────
+
+  - id: "phase1_keyword_universe"
+    type: "flow"
+    stage: "phase1_keywords"
+    purpose: "Build comprehensive keyword universe with intent mapping"
+    prompt: |
+      KEYWORD STRATEGY: Build the keyword universe.
+
+      Domain: {{state.domain}}
+      Business: {{state.business_type}}
+      Location: {{state.city_region}}
+
+      Build keyword clusters for:
+      1. Service + city (high intent)
+      2. Service + "near me" (mobile heavy)
+      3. Problem-based queries (symptom + fix)
+      4. Price/insurance queries (conversion focused)
+      5. Brand/comparison queries
+      6. Location modifiers (neighborhoods, suburbs)
+
+      For each keyword cluster:
+      - Estimate intent (1-5)
+      - Estimate local relevance (1-5)
+      - Note competition level
+
+      Output structured keyword_universe.yaml
+
+    state_writes:
+      - path: "phase1_keywords.keyword_universe_built"
+        value: true
+      - path: "phase1_keywords.started"
+        value: true
+
+  - id: "phase1_competitor_analysis"
+    type: "flow"
+    stage: "phase1_keywords"
+    purpose: "Analyze competitor presence in search results"
+    prompt: |
+      COMPETITOR ANALYSIS: Check who owns the SERPs.
+
+      For top 5-10 service keywords:
+      1. Who owns the local pack?
+      2. Who owns organic top 3?
+      3. What page types do winners have?
+         - Dedicated service pages?
+         - Location pages?
+         - FAQ content?
+         - Strong reviews/GBP?
+
+      Output competitor analysis with gaps to exploit.
+
+    state_writes:
+      - path: "phase1_keywords.competitor_analysis_done"
+        value: true
+
+  - id: "phase1_page_map"
+    type: "flow"
+    stage: "phase1_keywords"
+    purpose: "Create keyword-to-page mapping"
+    prompt: |
+      PAGE MAP: Map keywords to pages.
+
+      For each keyword cluster, determine:
+      | Cluster | Intent | Best page type | Keep/Build | Notes |
+
+      Scoring:
+      Priority = (Intent x Local relevance x Volume) / Difficulty
+
+      Output:
+      - Pages to keep (with keyword targets)
+      - Pages to build (with priority)
+      - Pages to consolidate
+
+    output_schema:
+      type: "object"
+      required: ["page_map", "pages_to_keep", "pages_to_build"]
+
+    state_writes:
+      - path: "phase1_keywords.page_map_created"
+        value: true
+      - path: "phase1_keywords.pages_to_keep"
+        from: "output.pages_to_keep"
+      - path: "phase1_keywords.pages_to_build"
+        from: "output.pages_to_build"
+
+  - id: "phase1_gate"
+    type: "gate"
+    stage: "phase1_keywords"
+    purpose: "Validate keyword strategy completeness"
+    gate_config:
+      criteria:
+        - name: "keyword_universe_exists"
+          check: "state.phase1_keywords.keyword_universe_built == true"
+        - name: "competitor_analysis_done"
+          check: "state.phase1_keywords.competitor_analysis_done == true"
+        - name: "page_map_created"
+          check: "state.phase1_keywords.page_map_created == true"
+        - name: "min_clusters_covered"
+          check: "state.phase1_keywords.keyword_count >= 4"
+      on_pass: "phase2_crawl"
+      on_fail: "phase1_keyword_universe"
+      max_retries: 2
+
+    state_writes:
+      - path: "phase1_keywords.gate_passed"
+        value: true
+      - path: "phase1_keywords.completed"
+        value: true
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # PHASE 2: CURRENT STATE MAPPING
+  # ─────────────────────────────────────────────────────────────────────────────
+
+  - id: "phase2_crawl"
+    type: "flow"
+    stage: "phase2_mapping"
+    purpose: "Crawl and inventory all URLs"
+    prompt: |
+      CRAWL: Inventory the entire site.
+
+      Export/crawl to capture:
+      - All indexable URLs
+      - Status codes
+      - Titles, meta descriptions, H1s
+      - Canonicals
+      - Internal links in/out
+      - Images and their URLs
+
+      Categorize by type:
+      - Pages, Posts, Categories, Tags
+      - Author archives, Date archives
+      - Attachments, Search pages
+
+      STOP if crawl returns < {{config.thresholds.MIN_INDEXABLE_URLS}} URLs.
+
+    state_writes:
+      - path: "phase2_mapping.crawl_complete"
+        value: true
+      - path: "phase2_mapping.started"
+        value: true
+
+  - id: "phase2_gsc_data"
+    type: "tributary"
+    stage: "phase2_mapping"
+    purpose: "Pull GSC traffic data"
+    skill: "google-search-console"
+    parameters:
+      metrics: ["clicks", "impressions", "ctr", "position"]
+      dimensions: ["page", "query"]
+      date_range: "last_90_days"
+
+    state_writes:
+      - path: "phase2_mapping.gsc_data_loaded"
+        value: true
+
+  - id: "phase2_backlinks"
+    type: "tributary"
+    stage: "phase2_mapping"
+    purpose: "Pull backlink data"
+    skill: "ahrefs"
+    parameters:
+      report: "backlinks_by_page"
+
+    state_writes:
+      - path: "phase2_mapping.backlink_data_loaded"
+        value: true
+
+  - id: "phase2_master_sheet"
+    type: "flow"
+    stage: "phase2_mapping"
+    purpose: "Build the Master URL Sheet"
+    prompt: |
+      MASTER URL SHEET: Create the source of truth.
+
+      Combine crawl + GSC + backlink data into master sheet:
+      | Old URL | Type | Traffic | Backlinks | Primary Query | New URL | Action | Redirect Type | Notes |
+
+      RULE: Every URL with traffic OR backlinks MUST have deliberate outcome.
+
+      Actions:
+      - Keep (same URL)
+      - Redirect (to new URL)
+      - Consolidate (merge into stronger page)
+      - Remove (with 410 or redirect)
+
+      STOP if any row is missing Action column.
+
+    output_schema:
+      type: "object"
+      required: ["master_sheet_path", "urls_with_action", "urls_without_action"]
+
+    state_writes:
+      - path: "phase2_mapping.master_sheet_created"
+        value: true
+      - path: "phase2_mapping.master_sheet_path"
+        from: "output.master_sheet_path"
+
+  - id: "phase2_gate"
+    type: "gate"
+    stage: "phase2_mapping"
+    purpose: "Validate all URLs have been mapped"
+    gate_config:
+      criteria:
+        - name: "crawl_complete"
+          check: "state.phase2_mapping.crawl_complete == true"
+        - name: "gsc_loaded"
+          check: "state.phase2_mapping.gsc_data_loaded == true"
+        - name: "master_sheet_complete"
+          check: "state.phase2_mapping.urls_without_action == 0"
+        - name: "min_urls_found"
+          check: "state.phase2_mapping.indexable_urls >= state.config.thresholds.MIN_INDEXABLE_URLS"
+      on_pass: "phase3_url_decisions"
+      on_fail: "phase2_master_sheet"
+      max_retries: 2
+
+    state_writes:
+      - path: "phase2_mapping.gate_passed"
+        value: true
+      - path: "phase2_mapping.completed"
+        value: true
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # PHASE 3: FUTURE STATE ARCHITECTURE
+  # ─────────────────────────────────────────────────────────────────────────────
+
+  - id: "phase3_url_decisions"
+    type: "flow"
+    stage: "phase3_architecture"
+    purpose: "Make final URL decisions"
+    prompt: |
+      URL DECISIONS: Finalize the structure.
+
+      Principles:
+      1. Keep URL structure stable for money pages
+      2. Only consolidate when intent matches
+      3. Never redirect everything to homepage
+
+      For each consolidation:
+      - Verify intent match
+      - Redirect to most relevant section
+
+      Output counts:
+      - URLs keeping
+      - URLs redirecting
+      - URLs consolidating
+      - URLs removing
+
+    state_writes:
+      - path: "phase3_architecture.started"
+        value: true
+
+  - id: "phase3_redirect_map"
+    type: "flow"
+    stage: "phase3_architecture"
+    purpose: "Create redirect mapping for Vercel"
+    prompt: |
+      REDIRECT MAP: Build the redirect configuration.
+
+      Rules:
+      1. One-to-one redirect is best
+      2. No redirect chains (A->B->C) - always to final destination
+      3. Use 301 or 308 for permanent moves
+      4. Never redirect > {{config.thresholds.MAX_HOMEPAGE_REDIRECTS_PCT}}% to homepage
+      5. Use 410 carefully for intentional removal
+
+      Output:
+      - redirect_map.json for Vercel
+      - List any chains found
+      - Count homepage redirects
+
+      STOP if > {{config.thresholds.MAX_HOMEPAGE_REDIRECTS_PCT}}% redirect to homepage.
+
+    output_schema:
+      type: "object"
+      required: ["redirect_map_path", "redirect_count", "chains_found", "homepage_redirect_pct"]
+
+    state_writes:
+      - path: "phase3_architecture.redirect_map_created"
+        value: true
+      - path: "phase3_architecture.redirect_map_path"
+        from: "output.redirect_map_path"
+
+  - id: "phase3_validate_redirects"
+    type: "flow"
+    stage: "phase3_architecture"
+    purpose: "Validate all redirect destinations exist"
+    prompt: |
+      REDIRECT VALIDATION: Verify destinations.
+
+      For each redirect:
+      1. Verify destination URL will exist in new site
+      2. Verify no redirect chains
+      3. Flag any destination 404s
+
+      STOP if any destination doesn't exist.
+
+    state_writes:
+      - path: "phase3_architecture.redirects_validated"
+        value: true
+
+  - id: "phase3_gate"
+    type: "gate"
+    stage: "phase3_architecture"
+    purpose: "Validate redirect map completeness"
+    gate_config:
+      criteria:
+        - name: "redirect_map_exists"
+          check: "state.phase3_architecture.redirect_map_created == true"
+        - name: "no_chains"
+          check: "state.phase3_architecture.chains_found == 0"
+        - name: "homepage_redirects_safe"
+          check: "state.phase3_architecture.homepage_redirect_pct <= state.config.thresholds.MAX_HOMEPAGE_REDIRECTS_PCT"
+        - name: "destinations_valid"
+          check: "len(state.phase3_architecture.missing_destinations) == 0"
+      on_pass: "phase4_repo_setup"
+      on_fail: "phase3_redirect_map"
+      max_retries: 2
+
+    state_writes:
+      - path: "phase3_architecture.gate_passed"
+        value: true
+      - path: "phase3_architecture.completed"
+        value: true
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # PHASE 4: GITHUB BUILD
+  # ─────────────────────────────────────────────────────────────────────────────
+
+  - id: "phase4_repo_setup"
+    type: "tributary"
+    stage: "phase4_build"
+    purpose: "Create GitHub repository"
+    skill: "github-operations-manager"
+    parameters:
+      action: "create_repo"
+      branches: ["main", "staging"]
+
+    state_writes:
+      - path: "phase4_build.repo_created"
+        value: true
+      - path: "phase4_build.started"
+        value: true
+
+  - id: "phase4_framework_setup"
+    type: "flow"
+    stage: "phase4_build"
+    purpose: "Initialize Next.js framework"
+    prompt: |
+      FRAMEWORK SETUP: Initialize the Next.js project.
+
+      Structure:
+      - main = production
+      - staging = pre-prod QA
+      - feature branches = changes
+
+      Content system decision:
+      - If non-technical editors: Use Git-backed CMS or headless CMS
+      - If dev-only: Markdown/MDX in repo
+
+      Set up Vercel integration for preview deployments.
+
+    state_writes:
+      - path: "phase4_build.framework"
+        value: "nextjs"
+
+  - id: "phase4_staging_deploy"
+    type: "tributary"
+    stage: "phase4_build"
+    purpose: "Deploy staging to Vercel"
+    skill: "vercel"
+    parameters:
+      action: "deploy"
+      branch: "staging"
+      noindex: true
+
+    state_writes:
+      - path: "phase4_build.staging_deployed"
+        value: true
+      - path: "phase4_build.staging_noindexed"
+        value: true
+
+  - id: "phase4_gate"
+    type: "gate"
+    stage: "phase4_build"
+    purpose: "Validate build completeness"
+    gate_config:
+      criteria:
+        - name: "repo_exists"
+          check: "state.phase4_build.repo_created == true"
+        - name: "staging_deployed"
+          check: "state.phase4_build.staging_deployed == true"
+        - name: "staging_noindexed"
+          check: "state.phase4_build.staging_noindexed == true"
+      on_pass: "phase5_h1_audit"
+      on_fail: "phase4_staging_deploy"
+      max_retries: 2
+
+    state_writes:
+      - path: "phase4_build.gate_passed"
+        value: true
+      - path: "phase4_build.completed"
+        value: true
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # PHASE 5: TECHNICAL SEO
+  # ─────────────────────────────────────────────────────────────────────────────
+
+  - id: "phase5_h1_audit"
+    type: "flow"
+    stage: "phase5_techseo"
+    purpose: "Audit and fix H1/heading structure"
+    prompt: |
+      H1 AUDIT: Verify heading structure.
+
+      Rules:
+      - One H1 per page matching core intent
+      - H2s for major sections, H3 for subsections
+      - Don't stuff cities into every heading
+
+      Output pages with issues.
+
+    state_writes:
+      - path: "phase5_techseo.h1_audit_complete"
+        value: true
+      - path: "phase5_techseo.started"
+        value: true
+
+  - id: "phase5_metadata"
+    type: "flow"
+    stage: "phase5_techseo"
+    purpose: "Verify metadata on all pages"
+    prompt: |
+      METADATA: Check titles and descriptions.
+
+      Rules:
+      - Titles match intent + location
+      - Meta descriptions sell the click
+      - Canonical tag on every page
+
+      Output pages missing metadata.
+
+    state_writes:
+      - path: "phase5_techseo.metadata_audit_complete"
+        value: true
+      - path: "phase5_techseo.canonical_audit_complete"
+        value: true
+
+  - id: "phase5_schema"
+    type: "flow"
+    stage: "phase5_techseo"
+    purpose: "Implement structured data"
+    prompt: |
+      SCHEMA: Implement structured data.
+
+      Site-wide:
+      - Organization or LocalBusiness
+      - WebSite (with search action if applicable)
+      - BreadcrumbList
+
+      Page-level:
+      - Service pages: Service schema
+      - FAQs: FAQPage (only if visible to users)
+      - Reviews: only if following guidelines
+
+      Validate with Google Rich Results Test.
+      STOP if validation returns errors.
+
+    state_writes:
+      - path: "phase5_techseo.schema_implemented"
+        value: true
+
+  - id: "phase5_sitemap"
+    type: "flow"
+    stage: "phase5_techseo"
+    purpose: "Generate XML sitemap"
+    prompt: |
+      SITEMAP: Generate XML sitemap.
+
+      Include only indexable pages.
+      Verify URL count matches expected.
+      Output sitemap.xml path.
+
+    state_writes:
+      - path: "phase5_techseo.sitemap_created"
+        value: true
+
+  - id: "phase5_robots"
+    type: "flow"
+    stage: "phase5_techseo"
+    purpose: "Configure robots.txt"
+    prompt: |
+      ROBOTS.TXT: Configure correctly.
+
+      - Staging: noindex, nofollow or password protected
+      - Production: Allow indexing
+
+      Verify configuration.
+
+    state_writes:
+      - path: "phase5_techseo.robots_txt_correct"
+        value: true
+
+  - id: "phase5_gate"
+    type: "gate"
+    stage: "phase5_techseo"
+    purpose: "Validate technical SEO implementation"
+    gate_config:
+      criteria:
+        - name: "h1_audit_done"
+          check: "state.phase5_techseo.h1_audit_complete == true"
+        - name: "metadata_done"
+          check: "state.phase5_techseo.metadata_audit_complete == true"
+        - name: "schema_valid"
+          check: "state.phase5_techseo.schema_validation_passed == true"
+        - name: "sitemap_exists"
+          check: "state.phase5_techseo.sitemap_created == true"
+        - name: "robots_correct"
+          check: "state.phase5_techseo.robots_txt_correct == true"
+      on_pass: "phase6_baseline"
+      on_fail: "phase5_h1_audit"
+      max_retries: 2
+
+    state_writes:
+      - path: "phase5_techseo.gate_passed"
+        value: true
+      - path: "phase5_techseo.completed"
+        value: true
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # PHASE 6: PERFORMANCE / CWV
+  # ─────────────────────────────────────────────────────────────────────────────
+
+  - id: "phase6_baseline"
+    type: "flow"
+    stage: "phase6_performance"
+    purpose: "Capture performance baseline"
+    prompt: |
+      BASELINE: Capture current site performance.
+
+      Measure on key pages (mobile priority):
+      - LCP (target: <= {{config.thresholds.LCP_TARGET_SECONDS}}s)
+      - INP (target: <= {{config.thresholds.INP_TARGET_MS}}ms)
+      - CLS (target: <= {{config.thresholds.CLS_TARGET}})
+
+      STOP if values are extreme (LCP > 10s, INP > 1000ms) - likely measurement error.
+
+    state_writes:
+      - path: "phase6_performance.baseline_captured"
+        value: true
+      - path: "phase6_performance.started"
+        value: true
+
+  - id: "phase6_optimize"
+    type: "flow"
+    stage: "phase6_performance"
+    purpose: "Implement performance optimizations"
+    prompt: |
+      OPTIMIZE: Improve performance.
+
+      Focus areas:
+      - Image optimization (AVIF/WebP, proper sizing)
+      - JS bundle size (minimize client-side hydration)
+      - Font optimization (1 family, limited weights)
+      - Third-party scripts (delay or eliminate chat widgets, heatmaps)
+      - LCP element preload
+      - CLS prevention (reserve space for images/embeds)
+
+      Set performance budget.
+
+    state_writes:
+      - path: "phase6_performance.budget_defined"
+        value: true
+
+  - id: "phase6_measure"
+    type: "flow"
+    stage: "phase6_performance"
+    purpose: "Measure optimized performance"
+    prompt: |
+      MEASURE: Check optimized performance.
+
+      Run PageSpeed Insights / Lighthouse on key pages.
+
+      Verify targets:
+      - LCP <= {{config.thresholds.LCP_TARGET_SECONDS}}s
+      - INP <= {{config.thresholds.INP_TARGET_MS}}ms
+      - CLS <= {{config.thresholds.CLS_TARGET}}
+
+    state_writes:
+      - path: "phase6_performance.current_captured"
+        value: true
+
+  - id: "phase6_gate"
+    type: "gate"
+    stage: "phase6_performance"
+    purpose: "Validate CWV targets"
+    gate_config:
+      criteria:
+        - name: "lcp_passing"
+          check: "state.phase6_performance.current.lcp_mobile <= state.config.thresholds.LCP_TARGET_SECONDS"
+        - name: "inp_passing"
+          check: "state.phase6_performance.current.inp_mobile <= state.config.thresholds.INP_TARGET_MS"
+        - name: "cls_passing"
+          check: "state.phase6_performance.current.cls_mobile <= state.config.thresholds.CLS_TARGET"
+      on_pass: "phase7_seo_qa"
+      on_fail: "phase6_optimize"
+      max_retries: 3
+
+    # Conditional state writes - only on_pass_writes execute when gate passes
+    on_pass_writes:
+      - path: "phase6_performance.gate_passed"
+        value: true
+      - path: "phase6_performance.completed"
+        value: true
+
+    on_fail_writes:
+      - path: "phase6_performance.gate_passed"
+        value: false
+      - path: "counters.retries.phase6"
+        increment: 1
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # PHASE 7: QA
+  # ─────────────────────────────────────────────────────────────────────────────
+
+  - id: "phase7_seo_qa"
+    type: "flow"
+    stage: "phase7_qa"
+    purpose: "SEO QA on staging"
+    prompt: |
+      SEO QA: Crawl and verify staging.
+
+      Checks:
+      - No broken internal links
+      - Correct canonicals
+      - Correct title/H1 presence
+      - Schema validates
+      - Sitemap URLs return 200
+      - Robots.txt correct
+
+      STOP if > {{config.thresholds.MAX_BROKEN_LINKS}} broken internal links.
+
+    state_writes:
+      - path: "phase7_qa.staging_crawl_complete"
+        value: true
+      - path: "phase7_qa.started"
+        value: true
+
+  - id: "phase7_redirect_qa"
+    type: "flow"
+    stage: "phase7_qa"
+    purpose: "Test all redirects"
+    prompt: |
+      REDIRECT QA: Test redirect mappings.
+
+      For all redirects:
+      - Verify old -> new works
+      - No redirect chains
+      - No 404 destinations
+
+      For high-traffic URLs (> {{config.thresholds.HIGH_TRAFFIC_MONTHLY}}/month):
+      - Individual testing required
+
+      STOP if failure rate > {{config.thresholds.MAX_REDIRECT_FAILURE_RATE * 100}}%.
+
+    state_writes:
+      - path: "phase7_qa.redirects_tested"
+        value: true
+
+  - id: "phase7_tracking_qa"
+    type: "flow"
+    stage: "phase7_qa"
+    purpose: "Verify analytics and tracking"
+    prompt: |
+      TRACKING QA: Verify analytics.
+
+      - GA4 events firing
+      - Conversion tracking (forms, calls, bookings)
+      - Call tracking numbers (if used)
+      - GSC verification ready
+
+    state_writes:
+      - path: "phase7_qa.ga4_verified"
+        value: true
+      - path: "phase7_qa.conversions_verified"
+        value: true
+
+  - id: "phase7_gate"
+    type: "gate"
+    stage: "phase7_qa"
+    purpose: "Validate all QA checks pass"
+    gate_config:
+      criteria:
+        - name: "crawl_clean"
+          check: "state.phase7_qa.broken_internal_links <= state.config.thresholds.MAX_BROKEN_LINKS"
+        - name: "redirects_working"
+          check: "state.phase7_qa.redirect_failure_rate <= state.config.thresholds.MAX_REDIRECT_FAILURE_RATE"
+        - name: "tracking_working"
+          check: "state.phase7_qa.ga4_verified == true"
+      on_pass: "phase8_prelaunch"
+      on_fail: "phase7_seo_qa"
+      max_retries: 3
+
+    # Conditional state writes - only on_pass_writes execute when gate passes
+    on_pass_writes:
+      - path: "phase7_qa.gate_passed"
+        value: true
+      - path: "phase7_qa.completed"
+        value: true
+
+    on_fail_writes:
+      - path: "phase7_qa.gate_passed"
+        value: false
+      - path: "counters.retries.phase7"
+        increment: 1
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # PHASE 8: LAUNCH
+  # ─────────────────────────────────────────────────────────────────────────────
+
+  - id: "phase8_prelaunch"
+    type: "flow"
+    stage: "phase8_launch"
+    purpose: "Pre-launch preparations"
+    prompt: |
+      PRE-LAUNCH: Final preparations.
+
+      1. Freeze WP content changes
+      2. Document rollback plan
+      3. Push final redirect rules
+      4. Prepare sitemap submission
+
+      STOP if rollback plan not documented.
+
+    state_writes:
+      - path: "phase8_launch.wp_content_frozen"
+        value: true
+      - path: "phase8_launch.rollback_plan_documented"
+        value: true
+      - path: "phase8_launch.started"
+        value: true
+
+  - id: "phase8_cutover"
+    type: "flow"
+    stage: "phase8_launch"
+    purpose: "Execute DNS cutover"
+    prompt: |
+      CUTOVER: Switch DNS to Vercel.
+
+      1. Change DNS
+      2. Validate homepage loads
+      3. Validate money pages load
+      4. Test top 20 redirects
+      5. Submit sitemap to GSC
+
+    state_writes:
+      - path: "phase8_launch.dns_changed"
+        value: true
+
+  - id: "phase8_validate"
+    type: "flow"
+    stage: "phase8_launch"
+    purpose: "Post-cutover validation"
+    prompt: |
+      POST-CUTOVER: Validate launch.
+
+      Checks:
+      - Homepage loads correctly
+      - All money pages accessible
+      - Top 20 legacy URLs redirect correctly
+      - GSC sitemap submitted
+
+    state_writes:
+      - path: "phase8_launch.homepage_loads"
+        value: true
+      - path: "phase8_launch.money_pages_load"
+        value: true
+      - path: "phase8_launch.top20_redirects_working"
+        value: true
+
+  - id: "phase8_gate"
+    type: "gate"
+    stage: "phase8_launch"
+    purpose: "Validate launch success"
+    gate_config:
+      criteria:
+        - name: "site_live"
+          check: "state.phase8_launch.homepage_loads == true"
+        - name: "pages_working"
+          check: "state.phase8_launch.money_pages_load == true"
+        - name: "redirects_working"
+          check: "state.phase8_launch.top20_redirects_working == true"
+        - name: "sitemap_submitted"
+          check: "state.phase8_launch.sitemap_submitted == true"
+      on_pass: "phase9_monitoring"
+      on_fail: "escalate"
+
+    state_writes:
+      - path: "phase8_launch.gate_passed"
+        value: true
+      - path: "phase8_launch.completed"
+        value: true
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # PHASE 9: POST-LAUNCH
+  # ─────────────────────────────────────────────────────────────────────────────
+
+  - id: "phase9_monitoring"
+    type: "flow"
+    stage: "phase9_postlaunch"
+    purpose: "Set up post-launch monitoring"
+    prompt: |
+      MONITORING: Track post-launch metrics.
+
+      Monitor for 7 days:
+      - GSC crawl errors
+      - Index coverage changes
+      - CWV field data
+      - Rankings for priority keywords
+
+    state_writes:
+      - path: "phase9_postlaunch.monitoring_started"
+        value: true
+      - path: "phase9_postlaunch.started"
+        value: true
+
+  - id: "phase9_gate"
+    type: "gate"
+    stage: "phase9_postlaunch"
+    purpose: "Validate post-launch stability"
+    gate_config:
+      criteria:
+        - name: "monitoring_active"
+          check: "state.phase9_postlaunch.monitoring_started == true"
+        - name: "no_critical_errors"
+          check: "state.phase9_postlaunch.crawl_error_count < 10"
+      on_pass: "success"
+      on_fail: "escalate"
+
+    state_writes:
+      - path: "phase9_postlaunch.gate_passed"
+        value: true
+      - path: "phase9_postlaunch.completed"
+        value: true
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # TERMINAL NODES
+  # ─────────────────────────────────────────────────────────────────────────────
+
+  - id: "success"
+    type: "terminal"
+    stage: "complete"
+    purpose: "Migration completed successfully"
+    terminal_config:
+      outcome: "success"
+      message: "Website migration completed. All phases passed validation."
+    on_reach:
+      - action: "trigger_learning"
+        outcome: "success"
+      - action: "write_memory"
+        content: "successful_migration_patterns"
+
+  - id: "failure"
+    type: "terminal"
+    stage: "complete"
+    purpose: "Migration failed - unrecoverable"
+    terminal_config:
+      outcome: "failure"
+      message: "Migration failed after maximum retries."
+    on_reach:
+      - action: "trigger_learning"
+        outcome: "failure"
+      - action: "log_failure_mode"
+
+  - id: "escalate"
+    type: "terminal"
+    stage: "complete"
+    purpose: "Human intervention required"
+    terminal_config:
+      outcome: "escalate"
+      message: "Migration requires human intervention. See state for details."
+    on_reach:
+      - action: "notify_human"
+        message: "{{state.data.escalation_reason}}"
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# EDGES
+# ═══════════════════════════════════════════════════════════════════════════════
+
+edges:
+  # Pre-flight flow
+  - id: "e_preflight_check_config"
+    from: "preflight_check"
+    to: "preflight_config"
+    type: "laminar"
+    guard: "output.can_proceed == true"
+    priority: 1
+
+  - id: "e_preflight_check_blocked"
+    from: "preflight_check"
+    to: "preflight_blocked"
+    type: "laminar"
+    guard: "output.can_proceed == false"
+    priority: 2
+
+  - id: "e_preflight_config_gate"
+    from: "preflight_config"
+    to: "preflight_gate"
+    type: "laminar"
+    guard: "state.preflight.config_loaded == true"
+    priority: 1
+
+  - id: "e_preflight_gate_intake"
+    from: "preflight_gate"
+    to: "intake"
+    type: "laminar"
+    guard: "state.preflight.all_checks_passed == true"
+    priority: 1
+
+  # Intake to Phase 1
+  - id: "e_intake_phase1"
+    from: "intake"
+    to: "phase1_keyword_universe"
+    type: "laminar"
+    guard: "output.ready_to_proceed == true"
+    priority: 1
+
+  # Phase 1 internal flow
+  - id: "e_phase1_keywords_competitor"
+    from: "phase1_keyword_universe"
+    to: "phase1_competitor_analysis"
+    type: "laminar"
+    guard: "state.phase1_keywords.keyword_universe_built == true"
+    priority: 1
+
+  - id: "e_phase1_competitor_pagemap"
+    from: "phase1_competitor_analysis"
+    to: "phase1_page_map"
+    type: "laminar"
+    guard: "state.phase1_keywords.competitor_analysis_done == true"
+    priority: 1
+
+  - id: "e_phase1_pagemap_gate"
+    from: "phase1_page_map"
+    to: "phase1_gate"
+    type: "laminar"
+    guard: "state.phase1_keywords.page_map_created == true"
+    priority: 1
+
+  # Phase 1 gate to Phase 2
+  - id: "e_phase1_gate_phase2"
+    from: "phase1_gate"
+    to: "phase2_crawl"
+    type: "laminar"
+    guard: "state.phase1_keywords.gate_passed == true"
+    priority: 1
+
+  # Phase 2 internal flow
+  - id: "e_phase2_crawl_gsc"
+    from: "phase2_crawl"
+    to: "phase2_gsc_data"
+    type: "laminar"
+    guard: "state.phase2_mapping.crawl_complete == true"
+    priority: 1
+
+  - id: "e_phase2_gsc_backlinks"
+    from: "phase2_gsc_data"
+    to: "phase2_backlinks"
+    type: "laminar"
+    guard: "state.phase2_mapping.gsc_data_loaded == true"
+    priority: 1
+
+  - id: "e_phase2_backlinks_master"
+    from: "phase2_backlinks"
+    to: "phase2_master_sheet"
+    type: "laminar"
+    priority: 1
+
+  - id: "e_phase2_master_gate"
+    from: "phase2_master_sheet"
+    to: "phase2_gate"
+    type: "laminar"
+    guard: "state.phase2_mapping.master_sheet_created == true"
+    priority: 1
+
+  # Phase 2 gate to Phase 3
+  - id: "e_phase2_gate_phase3"
+    from: "phase2_gate"
+    to: "phase3_url_decisions"
+    type: "laminar"
+    guard: "state.phase2_mapping.gate_passed == true"
+    priority: 1
+
+  # Phase 3 internal flow
+  - id: "e_phase3_decisions_redirects"
+    from: "phase3_url_decisions"
+    to: "phase3_redirect_map"
+    type: "laminar"
+    priority: 1
+
+  - id: "e_phase3_redirects_validate"
+    from: "phase3_redirect_map"
+    to: "phase3_validate_redirects"
+    type: "laminar"
+    guard: "state.phase3_architecture.redirect_map_created == true"
+    priority: 1
+
+  - id: "e_phase3_validate_gate"
+    from: "phase3_validate_redirects"
+    to: "phase3_gate"
+    type: "laminar"
+    guard: "state.phase3_architecture.redirects_validated == true"
+    priority: 1
+
+  # Phase 3 gate to Phase 4
+  - id: "e_phase3_gate_phase4"
+    from: "phase3_gate"
+    to: "phase4_repo_setup"
+    type: "laminar"
+    guard: "state.phase3_architecture.gate_passed == true"
+    priority: 1
+
+  # Phase 4 internal flow
+  - id: "e_phase4_repo_framework"
+    from: "phase4_repo_setup"
+    to: "phase4_framework_setup"
+    type: "laminar"
+    guard: "state.phase4_build.repo_created == true"
+    priority: 1
+
+  - id: "e_phase4_framework_deploy"
+    from: "phase4_framework_setup"
+    to: "phase4_staging_deploy"
+    type: "laminar"
+    priority: 1
+
+  - id: "e_phase4_deploy_gate"
+    from: "phase4_staging_deploy"
+    to: "phase4_gate"
+    type: "laminar"
+    guard: "state.phase4_build.staging_deployed == true"
+    priority: 1
+
+  # Phase 4 gate to Phase 5
+  - id: "e_phase4_gate_phase5"
+    from: "phase4_gate"
+    to: "phase5_h1_audit"
+    type: "laminar"
+    guard: "state.phase4_build.gate_passed == true"
+    priority: 1
+
+  # Phase 5 internal flow
+  - id: "e_phase5_h1_metadata"
+    from: "phase5_h1_audit"
+    to: "phase5_metadata"
+    type: "laminar"
+    guard: "state.phase5_techseo.h1_audit_complete == true"
+    priority: 1
+
+  - id: "e_phase5_metadata_schema"
+    from: "phase5_metadata"
+    to: "phase5_schema"
+    type: "laminar"
+    guard: "state.phase5_techseo.metadata_audit_complete == true"
+    priority: 1
+
+  - id: "e_phase5_schema_sitemap"
+    from: "phase5_schema"
+    to: "phase5_sitemap"
+    type: "laminar"
+    guard: "state.phase5_techseo.schema_implemented == true"
+    priority: 1
+
+  - id: "e_phase5_sitemap_robots"
+    from: "phase5_sitemap"
+    to: "phase5_robots"
+    type: "laminar"
+    guard: "state.phase5_techseo.sitemap_created == true"
+    priority: 1
+
+  - id: "e_phase5_robots_gate"
+    from: "phase5_robots"
+    to: "phase5_gate"
+    type: "laminar"
+    guard: "state.phase5_techseo.robots_txt_correct == true"
+    priority: 1
+
+  # Phase 5 gate to Phase 6
+  - id: "e_phase5_gate_phase6"
+    from: "phase5_gate"
+    to: "phase6_baseline"
+    type: "laminar"
+    guard: "state.phase5_techseo.gate_passed == true"
+    priority: 1
+
+  # Phase 6 internal flow
+  - id: "e_phase6_baseline_optimize"
+    from: "phase6_baseline"
+    to: "phase6_optimize"
+    type: "laminar"
+    guard: "state.phase6_performance.baseline_captured == true"
+    priority: 1
+
+  - id: "e_phase6_optimize_measure"
+    from: "phase6_optimize"
+    to: "phase6_measure"
+    type: "laminar"
+    guard: "state.phase6_performance.budget_defined == true"
+    priority: 1
+
+  - id: "e_phase6_measure_gate"
+    from: "phase6_measure"
+    to: "phase6_gate"
+    type: "laminar"
+    guard: "state.phase6_performance.current_captured == true"
+    priority: 1
+
+  # Phase 6 gate to Phase 7
+  - id: "e_phase6_gate_phase7"
+    from: "phase6_gate"
+    to: "phase7_seo_qa"
+    type: "laminar"
+    guard: "state.phase6_performance.gate_passed == true"
+    priority: 1
+
+  # Phase 6 retry loop
+  - id: "e_phase6_gate_retry"
+    from: "phase6_gate"
+    to: "phase6_optimize"
+    type: "turbulent"
+    guard: "state.phase6_performance.gate_passed == false and state.counters.retries.phase6 < 3"
+    priority: 2
+    max_retries: 3
+
+  # Phase 7 internal flow
+  - id: "e_phase7_seo_redirects"
+    from: "phase7_seo_qa"
+    to: "phase7_redirect_qa"
+    type: "laminar"
+    guard: "state.phase7_qa.staging_crawl_complete == true"
+    priority: 1
+
+  - id: "e_phase7_redirects_tracking"
+    from: "phase7_redirect_qa"
+    to: "phase7_tracking_qa"
+    type: "laminar"
+    guard: "state.phase7_qa.redirects_tested == true"
+    priority: 1
+
+  - id: "e_phase7_tracking_gate"
+    from: "phase7_tracking_qa"
+    to: "phase7_gate"
+    type: "laminar"
+    guard: "state.phase7_qa.ga4_verified == true"
+    priority: 1
+
+  # Phase 7 gate to Phase 8
+  - id: "e_phase7_gate_phase8"
+    from: "phase7_gate"
+    to: "phase8_prelaunch"
+    type: "laminar"
+    guard: "state.phase7_qa.gate_passed == true"
+    priority: 1
+
+  # Phase 7 retry loop
+  - id: "e_phase7_gate_retry"
+    from: "phase7_gate"
+    to: "phase7_seo_qa"
+    type: "turbulent"
+    guard: "state.phase7_qa.gate_passed == false and state.counters.retries.phase7 < 3"
+    priority: 2
+    max_retries: 3
+
+  # Phase 8 internal flow
+  - id: "e_phase8_prelaunch_cutover"
+    from: "phase8_prelaunch"
+    to: "phase8_cutover"
+    type: "laminar"
+    guard: "state.phase8_launch.rollback_plan_documented == true"
+    priority: 1
+
+  - id: "e_phase8_cutover_validate"
+    from: "phase8_cutover"
+    to: "phase8_validate"
+    type: "laminar"
+    guard: "state.phase8_launch.dns_changed == true"
+    priority: 1
+
+  - id: "e_phase8_validate_gate"
+    from: "phase8_validate"
+    to: "phase8_gate"
+    type: "laminar"
+    priority: 1
+
+  # Phase 8 gate to Phase 9
+  - id: "e_phase8_gate_phase9"
+    from: "phase8_gate"
+    to: "phase9_monitoring"
+    type: "laminar"
+    guard: "state.phase8_launch.gate_passed == true"
+    priority: 1
+
+  # Phase 8 escalation
+  - id: "e_phase8_gate_escalate"
+    from: "phase8_gate"
+    to: "escalate"
+    type: "laminar"
+    guard: "state.phase8_launch.gate_passed == false"
+    priority: 2
+
+  # Phase 9 to success
+  - id: "e_phase9_monitoring_gate"
+    from: "phase9_monitoring"
+    to: "phase9_gate"
+    type: "laminar"
+    guard: "state.phase9_postlaunch.monitoring_started == true"
+    priority: 1
+
+  - id: "e_phase9_gate_success"
+    from: "phase9_gate"
+    to: "success"
+    type: "laminar"
+    guard: "state.phase9_postlaunch.gate_passed == true"
+    priority: 1
+
+  # Phase 9 escalation
+  - id: "e_phase9_gate_escalate"
+    from: "phase9_gate"
+    to: "escalate"
+    type: "laminar"
+    guard: "state.phase9_postlaunch.gate_passed == false"
+    priority: 2
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# RELATIONSHIPS (for learning)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+relationships:
+  - from: "phase1_keywords"
+    to: "phase3_architecture"
+    type: "informs"
+    weight: 1.0
+    note: "Keyword research determines URL structure"
+
+  - from: "phase2_mapping"
+    to: "phase3_architecture"
+    type: "requires"
+    weight: 1.0
+    note: "URL inventory required before redirect mapping"
+
+  - from: "phase3_architecture"
+    to: "phase7_qa"
+    type: "validates"
+    weight: 1.0
+    note: "Redirect map validated in QA phase"
+
+  - from: "phase6_performance"
+    to: "phase9_postlaunch"
+    type: "measures"
+    weight: 0.8
+    note: "Lab data vs field data comparison"
+
+  - from: "phase7_qa"
+    to: "phase8_launch"
+    type: "gates"
+    weight: 1.0
+    note: "QA must pass before launch"

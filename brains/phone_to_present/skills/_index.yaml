@@ -1,0 +1,183 @@
+skills:
+  name: "phone_to_present_skills"
+  version: "1.0.0"
+  description: "Skills registry for phone analysis to presentation pipeline"
+
+  # External skills (from Claude Code or system)
+  external:
+    - id: "web_fetch"
+      description: "Fetch and parse web pages for business information"
+      used_in:
+        - "discovery_website_scrape"
+      parameters:
+        - url: "string"
+        - extract: "array"
+
+    - id: "file_read"
+      description: "Read CSV/XLSX data files"
+      used_in:
+        - "ingestion_identify_format"
+        - "presentation_load_template"
+      parameters:
+        - path: "string"
+        - format: "string"
+
+    - id: "file_write"
+      description: "Write output files (CSV, JSON, MD)"
+      used_in:
+        - "ingestion_create_gold_table"
+        - "presentation_save_markdown"
+        - "deliverables_manifest"
+      parameters:
+        - path: "string"
+        - content: "string"
+        - format: "string"
+
+    - id: "data_analysis"
+      description: "Pandas-based data analysis operations"
+      used_in:
+        - "analysis_*"
+        - "concurrency_*"
+      parameters:
+        - dataframe: "object"
+        - operation: "string"
+
+    - id: "chart_generation"
+      description: "Matplotlib/Seaborn chart generation"
+      used_in:
+        - "charts_generate"
+      parameters:
+        - chart_type: "string"
+        - data: "object"
+        - output_path: "string"
+
+    - id: "marp_render"
+      description: "Marp CLI for slide rendering"
+      used_in:
+        - "presentation_render_html"
+        - "presentation_render_pptx"
+      parameters:
+        - input: "string"
+        - output: "string"
+        - options: "array"
+
+    - id: "visual_verification"
+      description: "Visual QA and screenshot capture"
+      used_in:
+        - "qa_visual"
+        - "qa_pptx"
+      parameters:
+        - target: "string"
+        - checks: "array"
+
+    - id: "render_verify"
+      description: "Automated render verification script"
+      used_in:
+        - "qa_automated"
+      parameters:
+        - input: "string"
+        - checks: "array"
+
+  # Brain-specific skills (defined locally)
+  local:
+    - id: "disposition_mapping"
+      description: "Map raw disposition values to normalized categories"
+      implementation: |
+        def normalize_disposition(raw_value):
+            mapping = {
+                'answered': 'answered', 'completed': 'answered',
+                'connected': 'answered', 'talking': 'answered',
+                'missed': 'missed', 'no answer': 'missed',
+                'unanswered': 'missed', 'rna': 'missed',
+                'voicemail': 'voicemail', 'vm': 'voicemail',
+                'abandoned': 'abandoned', 'hang up': 'abandoned',
+                'redirected': 'redirected', 'forwarded': 'redirected',
+                'transferred': 'redirected'
+            }
+            raw_lower = str(raw_value).strip().lower()
+            if raw_lower in mapping:
+                return mapping[raw_lower], 1.0
+            for key, normalized in mapping.items():
+                if key in raw_lower:
+                    return normalized, 0.8
+            return 'unknown', 0.0
+
+    - id: "direction_mapping"
+      description: "Map raw direction values to normalized categories"
+      implementation: |
+        def normalize_direction(raw_value):
+            mapping = {
+                'inbound': 'inbound', 'incoming': 'inbound',
+                'in': 'inbound', 'received': 'inbound',
+                'outbound': 'outbound', 'outgoing': 'outbound',
+                'out': 'outbound', 'placed': 'outbound',
+                'internal': 'internal', 'transfer': 'internal'
+            }
+            raw_lower = str(raw_value).strip().lower()
+            return mapping.get(raw_lower, 'unknown')
+
+    - id: "business_hours_parser"
+      description: "Parse business hours string into structured format"
+      implementation: |
+        def parse_business_hours(hours_string):
+            # Parse formats like "Mon-Fri 8am-5pm, Sat 9am-1pm"
+            # Returns dict: {day: (open_decimal, close_decimal)}
+            pass  # Implementation in workflow
+
+    - id: "triggered_concurrency"
+      description: "Calculate triggered concurrency at each call arrival"
+      implementation: |
+        def calculate_triggered_concurrency(calls_df):
+            # For each arrival, count active calls
+            # Returns {level: count}
+            pass  # Implementation in workflow
+
+    - id: "time_weighted_concurrency"
+      description: "Calculate time spent at each concurrency level"
+      implementation: |
+        def calculate_time_weighted_concurrency(calls_df):
+            # Sweep-line algorithm
+            # Returns {level: seconds}
+            pass  # Implementation in workflow
+
+    - id: "monte_carlo_fte"
+      description: "Monte Carlo simulation for FTE determination"
+      implementation: |
+        def run_monte_carlo(calls_df, num_sims, aht_lambda, target_coverage):
+            # Simulate durations, calculate coverage FTE
+            # Returns MC_RESULTS dict
+            pass  # Implementation in workflow
+
+    - id: "pricing_calculator"
+      description: "Calculate all pricing options"
+      implementation: |
+        def calculate_pricing(base_fte, shrinkage_fte, ot_hours, has_sat, has_sun):
+            MYBCAT_RATE = 480
+            INHOUSE_RATE = 960
+            OT_MYBCAT = 18
+            OT_INHOUSE = 36
+            WEEKEND_PREMIUM = 25
+            # Returns pricing dict
+            pass  # Implementation in workflow
+
+    - id: "grade_assignment"
+      description: "Assign letter grade based on answer rate"
+      implementation: |
+        def assign_grade(answer_rate):
+            if answer_rate >= 95: return 'A', 'Excellent', '#10B981'
+            elif answer_rate >= 90: return 'B', 'Good', '#F97316'
+            elif answer_rate >= 80: return 'C', 'Needs Improvement', '#F97316'
+            elif answer_rate >= 70: return 'D', 'Poor', '#E63946'
+            else: return 'F', 'Critical', '#E63946'
+
+  # Skill dependencies
+  dependencies:
+    chart_generation:
+      - "matplotlib"
+      - "seaborn"
+      - "PIL"
+    marp_render:
+      - "@marp-team/marp-cli"
+    data_analysis:
+      - "pandas"
+      - "numpy"

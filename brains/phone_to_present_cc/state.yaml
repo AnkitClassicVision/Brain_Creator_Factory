@@ -12,6 +12,100 @@ state:
   user_request: ""
 
   # ═══════════════════════════════════════════════════════════════════
+  # PRE-FLIGHT STATE (Phase 0) - Based on Casey Optical Too Errors
+  # ═══════════════════════════════════════════════════════════════════
+  preflight:
+    # Template validation (Error 1 & 2 prevention)
+    template_exists: false
+    template_valid: false
+    template_path: null
+    missing_components: []
+    has_markdown_table: false
+    validation_errors: []
+
+    # Reference files
+    references_checked: false
+    slide18_ref_exists: false
+
+    # Configuration
+    config_loaded: false
+    config_source: null  # "file" or "defaults"
+
+    # Overall status
+    all_checks_passed: false
+    blocked_reason: null
+
+  # ═══════════════════════════════════════════════════════════════════
+  # CONFIGURATION (loaded at runtime or from defaults)
+  # ═══════════════════════════════════════════════════════════════════
+  config:
+    pricing_minimums:
+      PILOT_WEEKLY_MIN: 600
+      INBOUND_WEEKLY_MIN: 480
+      RHC_WEEKLY_MIN: 480
+      RHC_GROWTH_WEEKLY_MIN: 980
+      HIRE_WEEKLY_MIN: 960
+
+    coverage_minimums:
+      WEEKLY_HOURS_MIN: 40
+      FTE_MIN: 1.0
+      SHRINKAGE_FTE_MIN: 1.25
+
+    thresholds:
+      DISPOSITION_UNKNOWN_MAX_PCT: 10
+      FTE_RECONCILIATION_TOLERANCE: 1.0
+      CHART_MIN_SIZE_BYTES: 1000
+
+    critical_slides: [1, 5, 8, 18]
+
+  # ═══════════════════════════════════════════════════════════════════
+  # VALIDATION TRACKING (LLM Failure Prevention)
+  # ═══════════════════════════════════════════════════════════════════
+  validation:
+    # Pricing minimum enforcement (Error 4 prevention)
+    pricing_minimums_applied:
+      pilot: false
+      inbound: false
+      rhc: false
+      rhc_growth: false
+      hire: false
+    pricing_adjustments: []  # Log of "calculated $X, set to minimum $Y"
+
+    # FTE validation (Error 5 prevention)
+    weekly_hours_valid: false
+    fte_reconciliation_valid: false
+    fte_diff: null
+
+    # Chart verification (Error 6 prevention)
+    charts_verified: false
+    charts_missing: []
+    charts_empty: []
+
+    # Template population (Error 3 prevention)
+    placeholders_replaced: false
+    unreplaced_placeholders: []
+    all_rows_complete: false
+    incomplete_rows: []
+
+    # Critical slide validation (Error 7 prevention)
+    critical_slides_validated:
+      slide_1: false
+      slide_5: false
+      slide_8: false
+      slide_18: false
+    slide_issues: []
+
+    # Visual verification
+    html_rendered: false
+    html_size_bytes: 0
+    visual_verification_passed: false
+    visual_issues: []
+
+    # Stop conditions triggered
+    stop_conditions_triggered: []
+    # Each entry: {condition, timestamp, user_response, resolution}
+
+  # ═══════════════════════════════════════════════════════════════════
   # WORKING DATA
   # ═══════════════════════════════════════════════════════════════════
   data:

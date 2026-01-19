@@ -1,0 +1,1590 @@
+graph:
+  name: "website_transition_claude"
+  version: "1.0.0"
+  description: "WordPress to Vercel migration pipeline with SEO protection"
+
+start_node: "preflight_config_check"
+terminal_nodes: ["success", "failure", "escalate"]
+
+nodes:
+  # ═══════════════════════════════════════════════════════════════════
+  # PHASE 0: PRE-FLIGHT CHECKS (NEW - Based on LLM Failure Patterns)
+  # ═══════════════════════════════════════════════════════════════════
+  # WHY: LLMs will improvise when required files are missing instead of
+  # stopping to ask. These gates enforce explicit validation before work begins.
+
+  - id: "preflight_config_check"
+    type: "flow"
+    stage: "preflight"
+    purpose: "Load and validate configuration constants"
+
+    prompt: |
+      You are at PHASE 0.1 - Configuration Pre-Flight
+
+      BEFORE any migration work begins, verify configuration:
+
+      1. Check if config/migration_constants.yaml exists
+         - If missing: Create with default thresholds
+      2. Load configuration values:
+         - MIN_INDEXABLE_URLS (default: 10)
+         - MIN_GSC_DATA_ROWS (default: 1)
+         - MAX_REDIRECT_FAILURE_RATE (default: 0.10)
+         - CWV targets (LCP: 2.5s, INP: 200ms, CLS: 0.1)
+
+      Output JSON:
+      {
+        "config_loaded": true,
+        "config_path": "config/migration_constants.yaml",
+        "thresholds": {...},
+        "ready_for_data_check": true
+      }
+
+    output_schema:
+      type: "object"
+      required: ["config_loaded", "ready_for_data_check"]
+      properties:
+        config_loaded: { type: "boolean" }
+        config_path: { type: "string" }
+        thresholds: { type: "object" }
+        ready_for_data_check: { type: "boolean" }
+
+    state_writes:
+      - path: "preflight.config_loaded"
+        from: "output.config_loaded"
+      - path: "config.thresholds"
+        from: "output.thresholds"
+
+  - id: "preflight_tools_check"
+    type: "gate"
+    stage: "preflight"
+    purpose: "Verify required tools and APIs are accessible"
+
+    gate_config:
+      criteria:
+        - name: "gsc_accessible"
+          check: "skill_available('gsc_export')"
+          weight: 1.0
+        - name: "crawl_tool_accessible"
+          check: "skill_available('screaming_frog') OR skill_available('web_fetch')"
+          weight: 1.0
+        - name: "lighthouse_accessible"
+          check: "skill_available('lighthouse')"
+          weight: 0.8
+      threshold: 0.8
+      on_pass: "preflight_data_inventory"
+      on_fail: "preflight_tools_missing"
+      max_retries: 0
+
+  - id: "preflight_tools_missing"
+    type: "flow"
+    stage: "preflight"
+    purpose: "STOP - required tools unavailable"
+
+    prompt: |
+      CRITICAL: Required tools/APIs are not accessible.
+
+      DO NOT proceed. DO NOT improvise alternative approaches.
+
+      Missing tools: {{state.preflight.missing_tools}}
+
+      Ask user:
+      "The following tools are required but not accessible:
+      {{state.preflight.missing_tools}}
+
+      Please configure access to these tools before proceeding.
+      Options:
+      1. Configure API credentials for missing tools
+      2. Provide alternative data sources manually
+      3. Abort migration planning"
+
+      WAIT for user response before continuing.
+
+    on_complete:
+      - action: "stop"
+        reason: "Required tools missing - requires user input"
+
+  - id: "preflight_data_inventory"
+    type: "flow"
+    stage: "preflight"
+    purpose: "Check what data sources are already available"
+
+    prompt: |
+      You are at PHASE 0.2 - Data Source Inventory
+
+      Check what data is already available in the project:
+
+      1. Existing crawl data (crawl_export.csv, url_inventory.csv)
+      2. Existing GSC data (gsc_pages.csv, gsc_queries.csv)
+      3. Existing backlink data (backlinks.csv, ahrefs_export.csv)
+      4. Existing keyword research (keyword_universe.csv)
+      5. Existing Master URL Sheet (master_url_sheet.csv)
+
+      For each data source:
+      - Check if file exists
+      - Check if file has content (size > 0, rows > 0)
+      - Note file path and row count
+
+      Output JSON:
+      {
+        "crawl_data": {"exists": bool, "path": "...", "rows": N},
+        "gsc_data": {"exists": bool, "path": "...", "rows": N},
+        "backlink_data": {"exists": bool, "path": "...", "rows": N},
+        "keyword_data": {"exists": bool, "path": "...", "rows": N},
+        "master_url_sheet": {"exists": bool, "path": "...", "rows": N},
+        "ready_for_intake": true
+      }
+
+    output_schema:
+      type: "object"
+      required: ["ready_for_intake"]
+
+    state_writes:
+      - path: "preflight.data_inventory"
+        from: "output"
+
+  - id: "preflight_validation_gate"
+    type: "gate"
+    stage: "preflight"
+    purpose: "Final pre-flight validation before starting work"
+
+    prompt: |
+      PRE-FLIGHT VALIDATION
+
+      Verify minimum requirements:
+      1. Config loaded successfully
+      2. At least GSC export capability OR existing GSC data
+      3. At least crawl capability OR existing crawl data
+
+      If ANY critical requirement fails: Route to preflight_blocked
+      If all pass: Route to intake
+
+    gate_config:
+      criteria:
+        - name: "config_ready"
+          check: "state.preflight.config_loaded == true"
+          weight: 1.0
+        - name: "data_collection_possible"
+          check: "state.preflight.data_inventory.gsc_data.exists OR skill_available('gsc_export')"
+          weight: 1.0
+      threshold: 1.0
+      on_pass: "intake"
+      on_fail: "preflight_blocked"
+      max_retries: 0
+
+  - id: "preflight_blocked"
+    type: "flow"
+    stage: "preflight"
+    purpose: "STOP - pre-flight requirements not met"
+
+    prompt: |
+      CRITICAL: Pre-flight validation FAILED.
+
+      DO NOT proceed with migration planning.
+
+      Failed requirements:
+      {{state.preflight.failed_checks}}
+
+      Ask user:
+      "Migration cannot proceed due to missing requirements:
+      {{state.preflight.failed_checks}}
+
+      This workflow requires either:
+      - Access to Google Search Console data (via API or exported CSV)
+      - Ability to crawl the current website
+
+      Without this data, redirect planning would be guesswork and could
+      cause significant SEO damage.
+
+      Please provide access to required data sources before proceeding."
+
+      WAIT for user response.
+
+    on_complete:
+      - action: "stop"
+        reason: "Pre-flight blocked - requires user input"
+
+  # ═══════════════════════════════════════════════════════════════════
+  # INTAKE NODE
+  # ═══════════════════════════════════════════════════════════════════
+  - id: "intake"
+    type: "prime"
+    stage: "intake"
+    purpose: "Initialize workflow and gather project context"
+
+    prompt: |
+      You are at the INTAKE stage of the Website Migration Pipeline.
+
+      TRIGGER: User requested WordPress to Vercel migration
+
+      Your task:
+      1. Acknowledge the workflow is starting
+      2. Gather initial project info:
+         - Current domain
+         - City/region (for local SEO)
+         - Business type (one-liner)
+         - Which pages currently drive leads
+      3. Prepare to move to keyword strategy phase
+
+      Output JSON:
+      {
+        "workflow_started": true,
+        "domain_provided": "<domain if given, else null>",
+        "city_region": "<location if given, else null>",
+        "business_type": "<type if given, else null>",
+        "lead_pages_identified": false,
+        "ready_for_keyword_strategy": true
+      }
+
+    output_schema:
+      type: "object"
+      required: ["workflow_started", "ready_for_keyword_strategy"]
+      properties:
+        workflow_started: { type: "boolean" }
+        domain_provided: { type: ["string", "null"] }
+        city_region: { type: ["string", "null"] }
+        business_type: { type: ["string", "null"] }
+        lead_pages_identified: { type: "boolean" }
+        ready_for_keyword_strategy: { type: "boolean" }
+
+    state_writes:
+      - path: "workflow_started"
+        from: "output.workflow_started"
+      - path: "project.domain"
+        from: "output.domain_provided"
+      - path: "project.city_region"
+        from: "output.city_region"
+      - path: "project.business_type"
+        from: "output.business_type"
+
+    memory:
+      dredge: []
+      write: false
+
+    parallel:
+      spawn: false
+
+  # ═══════════════════════════════════════════════════════════════════
+  # PHASE 1: KEYWORD STRATEGY VALIDATION
+  # ═══════════════════════════════════════════════════════════════════
+  - id: "keyword_build_universe"
+    type: "flow"
+    stage: "keyword_strategy"
+    purpose: "Build comprehensive keyword universe"
+
+    prompt: |
+      You are at PHASE 1.1 - Build Keyword Universe
+
+      Build keyword universe with these intent buckets:
+      1. Service + city (high intent): `service + {city}`
+      2. Service + "near me" (mobile heavy)
+      3. Problem-based (easier wins): `fix {problem}`, `{symptom} treatment`
+      4. Price/insurance (conversion gold): `cost`, `accepts {insurance}`, `same day`
+      5. Brand/comparison (mid-funnel): `{service} vs {service}`, "best" queries
+      6. Location modifiers: neighborhoods, suburbs, "downtown", "open now"
+
+      BUSINESS TYPE: {{state.data.project.business_type}}
+      CITY/REGION: {{state.data.project.city_region}}
+
+      Output JSON:
+      {
+        "keyword_clusters": [
+          {"cluster": "...", "intent": "high|medium|low", "bucket": "service_city|near_me|problem|price|brand|location"}
+        ],
+        "total_keywords": N,
+        "buckets_covered": ["service_city", "near_me", ...]
+      }
+
+    output_schema:
+      type: "object"
+      required: ["keyword_clusters", "total_keywords"]
+
+    state_writes:
+      - path: "keywords.clusters"
+        from: "output.keyword_clusters"
+      - path: "keywords.total_count"
+        from: "output.total_keywords"
+
+  - id: "keyword_competitor_check"
+    type: "flow"
+    stage: "keyword_strategy"
+    purpose: "Analyze competitor SERP positions"
+
+    prompt: |
+      You are at PHASE 1.2 - Competitor Reality Check
+
+      For top services, analyze incognito SERP results:
+      - Who owns the local pack?
+      - Who owns top 3 organic?
+      - Do winners have:
+        - Dedicated service pages?
+        - Location pages?
+        - FAQ content?
+        - Strong reviews / GBP?
+
+      TOP SERVICES: {{state.data.keywords.top_services}}
+
+      Output JSON with competitor analysis per service.
+
+  - id: "keyword_page_map"
+    type: "flow"
+    stage: "keyword_strategy"
+    purpose: "Map keywords to pages (keep/build decisions)"
+
+    prompt: |
+      You are at PHASE 1.3 - Create Page Map
+
+      Map keywords to pages:
+
+      | Cluster           | Intent      | Best page type           | Keep/Build    |
+      |-------------------|-------------|--------------------------|---------------|
+      | "service + city"  | High        | Service page             | Keep or build |
+      | "near me"         | High        | Homepage + location page | Keep          |
+      | "problem/symptom" | Medium-high | FAQ / guide page         | Build         |
+      | "cost/insurance"  | High        | Pricing/insurance page   | Build         |
+      | "best {service}"  | Medium      | Comparison/guide         | Optional      |
+
+      Output page map with action for each keyword cluster.
+
+    state_writes:
+      - path: "keywords.page_map"
+        from: "output.page_map"
+
+  - id: "keyword_scoring"
+    type: "flow"
+    stage: "keyword_strategy"
+    purpose: "Score keyword clusters by priority"
+
+    prompt: |
+      You are at PHASE 1.4 - Keyword Scoring
+
+      Score each keyword cluster:
+      Priority Score = (Intent x Local_relevance x Volume) / Difficulty
+
+      - Intent: 1-5
+      - Local relevance: 1-5
+      - Difficulty: 1-5
+      - Volume: tool volume or relative scale
+
+      Output prioritized keyword list with scores.
+
+    state_writes:
+      - path: "keywords.scored_clusters"
+        from: "output.scored_clusters"
+
+  - id: "keyword_validation_gate"
+    type: "gate"
+    stage: "keyword_strategy"
+    purpose: "Validate keyword strategy before proceeding"
+
+    gate_config:
+      criteria:
+        - name: "keywords_mapped"
+          check: "len(state.data.keywords.page_map) > 0"
+        - name: "all_buckets_covered"
+          check: "len(state.data.keywords.buckets_covered) >= 4"
+      on_pass: "mapping_crawl"
+      on_fail: "keyword_build_universe"
+      max_retries: 2
+
+  # ═══════════════════════════════════════════════════════════════════
+  # PHASE 2: CURRENT STATE SEO + LINK MAPPING
+  # ═══════════════════════════════════════════════════════════════════
+  - id: "mapping_crawl"
+    type: "tributary"
+    stage: "url_mapping"
+    purpose: "Crawl and inventory all URLs"
+
+    skill_name: "screaming_frog"
+    skill_config:
+      domain: "{{state.data.project.domain}}"
+      export:
+        - "all_urls"
+        - "status_codes"
+        - "titles"
+        - "meta_descriptions"
+        - "h1s"
+        - "canonicals"
+        - "pagination"
+        - "images"
+        - "internal_links"
+
+    prompt: |
+      You are at PHASE 2.1 - Crawl & Inventory
+
+      Crawl the site using Screaming Frog or similar and export:
+      - All indexable URLs (pages/posts/categories/tags)
+      - Status codes
+      - Titles, meta descriptions
+      - H1s
+      - Canonicals
+      - Pagination
+      - Images + their URLs
+      - Internal links in/out counts
+
+    state_writes:
+      - path: "crawl.all_urls"
+        from: "skill_output.all_urls"
+      - path: "crawl.url_count"
+        from: "skill_output.url_count"
+
+  - id: "mapping_gsc_pull"
+    type: "tributary"
+    stage: "url_mapping"
+    purpose: "Pull authority signals from GSC"
+
+    skill_name: "gsc_export"
+    skill_config:
+      domain: "{{state.data.project.domain}}"
+      reports:
+        - "top_pages_clicks"
+        - "top_pages_impressions"
+        - "queries_per_page"
+        - "external_links"
+
+    prompt: |
+      You are at PHASE 2.2 - Pull GSC Authority Signals
+
+      From Google Search Console, pull:
+      - Top pages by clicks/impressions
+      - Top queries per page
+      - External links report (top linked pages)
+
+    state_writes:
+      - path: "gsc.top_pages"
+        from: "skill_output.top_pages"
+      - path: "gsc.external_links"
+        from: "skill_output.external_links"
+
+  - id: "mapping_backlinks_pull"
+    type: "tributary"
+    stage: "url_mapping"
+    purpose: "Pull backlink data from Ahrefs/Semrush"
+
+    skill_name: "ahrefs_api"
+    skill_config:
+      domain: "{{state.data.project.domain}}"
+      reports:
+        - "backlinks_by_page"
+        - "anchor_text_distribution"
+        - "broken_backlinks"
+
+    on_error: "mapping_backlinks_skip"
+
+    state_writes:
+      - path: "backlinks.by_page"
+        from: "skill_output.backlinks_by_page"
+      - path: "backlinks.broken"
+        from: "skill_output.broken_backlinks"
+
+  - id: "mapping_backlinks_skip"
+    type: "flow"
+    stage: "url_mapping"
+    purpose: "Handle missing backlink data gracefully"
+
+    prompt: |
+      Backlink data not available (Ahrefs/Semrush not configured).
+      Proceeding with GSC external links report only.
+      Flag for manual backlink check.
+
+    state_writes:
+      - path: "backlinks.manual_check_needed"
+        value: true
+
+  - id: "mapping_master_sheet"
+    type: "flow"
+    stage: "url_mapping"
+    purpose: "Build the Master URL Sheet"
+
+    prompt: |
+      You are at PHASE 2.3 - Build Master URL Sheet
+
+      Create sheet with columns:
+      | Column            | Purpose                                  |
+      |-------------------|------------------------------------------|
+      | Old URL           | Source of truth                          |
+      | Type              | Page / post / archive / attachment / etc |
+      | Organic traffic   | From GSC - prioritize what matters       |
+      | Backlinks count   | Risk scoring                             |
+      | Primary query     | What it currently ranks for              |
+      | New URL           | Destination                              |
+      | Action            | Keep / Redirect / Consolidate / Remove   |
+      | Redirect type     | 301 / 308 / 410                          |
+      | Notes             | Intent match + why                       |
+
+      RULE: If a URL has traffic or backlinks, it gets a deliberate outcome.
+
+      CRAWL DATA: {{state.data.crawl}}
+      GSC DATA: {{state.data.gsc}}
+      BACKLINKS: {{state.data.backlinks}}
+
+    state_writes:
+      - path: "master_sheet"
+        from: "output.master_sheet"
+
+  - id: "mapping_validation_gate"
+    type: "gate"
+    stage: "url_mapping"
+    purpose: "Ensure all important URLs have outcomes"
+
+    gate_config:
+      criteria:
+        - name: "all_traffic_urls_mapped"
+          check: "state.data.master_sheet.unmapped_traffic_urls == 0"
+        - name: "all_backlink_urls_mapped"
+          check: "state.data.master_sheet.unmapped_backlink_urls == 0"
+      on_pass: "future_url_planning"
+      on_fail: "mapping_master_sheet"
+      max_retries: 2
+
+  # ═══════════════════════════════════════════════════════════════════
+  # PHASE 3: FUTURE STATE ARCHITECTURE
+  # ═══════════════════════════════════════════════════════════════════
+  - id: "future_url_planning"
+    type: "flow"
+    stage: "architecture"
+    purpose: "Plan future URL structure"
+
+    prompt: |
+      You are at PHASE 3.1 - Future URL Structure
+
+      Safe approach:
+      - Keep URL structure stable for money pages
+      - Add new pages where keyword research proves demand
+      - Consolidate thin pages only when intent matches
+
+      Bad consolidation: merging unrelated intents
+      Good consolidation: combining 3 weak pages targeting same intent
+
+      Review master sheet and propose structure changes.
+
+    state_writes:
+      - path: "architecture.url_changes"
+        from: "output.url_changes"
+      - path: "architecture.consolidations"
+        from: "output.consolidations"
+
+  - id: "future_redirect_mapping"
+    type: "flow"
+    stage: "architecture"
+    purpose: "Create redirect mapping rules"
+
+    prompt: |
+      You are at PHASE 3.2 - Redirect Mapping
+
+      Rules that protect rankings:
+      1. One-to-one redirect is best (old -> exact equivalent)
+      2. If consolidating, redirect to most relevant section (not homepage)
+      3. Never redirect everything to homepage (soft-404 spam)
+      4. For intentionally removed content, consider 410 (use carefully)
+
+      Create redirect map for all URLs needing redirects.
+
+    state_writes:
+      - path: "redirects.map"
+        from: "output.redirect_map"
+      - path: "redirects.count"
+        from: "output.redirect_count"
+
+  - id: "future_vercel_config"
+    type: "flow"
+    stage: "architecture"
+    purpose: "Configure Vercel redirect implementation"
+
+    prompt: |
+      You are at PHASE 3.3 - Vercel Redirect Config
+
+      Vercel supports redirects at edge.
+      For bulk redirects, use CSV/JSON/JSONL format.
+
+      Generate vercel.json or next.config.js redirect rules.
+
+      REDIRECT MAP: {{state.data.redirects.map}}
+
+    state_writes:
+      - path: "redirects.vercel_config"
+        from: "output.vercel_config"
+
+  - id: "future_wordpress_ghost"
+    type: "flow"
+    stage: "architecture"
+    purpose: "Handle WordPress ghost URLs"
+
+    prompt: |
+      You are at PHASE 3.4 - WordPress Ghost URLs
+
+      WordPress creates junk URLs:
+      - tag archives
+      - author archives
+      - date archives
+      - attachment pages
+      - search pages
+
+      For each category, decide:
+      - noindex
+      - redirect
+      - removed (410)
+
+    state_writes:
+      - path: "redirects.ghost_url_plan"
+        from: "output.ghost_url_plan"
+
+  # ═══════════════════════════════════════════════════════════════════
+  # PHASE 4: BUILD IN GITHUB
+  # ═══════════════════════════════════════════════════════════════════
+  - id: "build_repo_setup"
+    type: "flow"
+    stage: "build"
+    purpose: "Set up GitHub repository structure"
+
+    prompt: |
+      You are at PHASE 4.1 - Repo Setup
+
+      Create Next.js repo with structure:
+      - `main` = production
+      - `staging` = pre-prod QA
+      - feature branches = changes
+
+      Vercel GitHub integration creates Preview Deployments for branches/PRs.
+
+    state_writes:
+      - path: "build.repo_created"
+        from: "output.repo_created"
+
+  - id: "build_environment_config"
+    type: "flow"
+    stage: "build"
+    purpose: "Configure environments"
+
+    prompt: |
+      You are at PHASE 4.2 - Environment Config
+
+      Configure:
+      - Preview/staging: noindex, nofollow (or protected access)
+      - Production: indexable
+
+    state_writes:
+      - path: "build.environments_configured"
+        from: "output.configured"
+
+  - id: "build_cms_decision"
+    type: "gate"
+    stage: "build"
+    purpose: "Decide on content management approach"
+
+    gate_config:
+      criteria:
+        - name: "cms_approach_selected"
+          check: "state.data.build.cms_approach is not None"
+      on_pass: "build_content_migration"
+      on_fail: "build_cms_selection"
+      max_retries: 0
+
+  - id: "build_cms_selection"
+    type: "flow"
+    stage: "build"
+    purpose: "Select content management approach"
+
+    prompt: |
+      Select CMS approach:
+
+      Option A (simple, dev-owned):
+      - Pages in Markdown/MDX in GitHub
+      - Changes via PRs
+
+      Option B (best if staff edits content):
+      - Git-backed CMS (e.g., Decap CMS)
+      - OR Headless CMS feeding the site
+
+      Hard truth: if content needs frequent updates and team won't do PRs,
+      go with CMS or site will stagnate.
+
+      Ask user for preference.
+
+    on_complete:
+      - action: "ask_user"
+        question: "Will non-technical people need to edit content?"
+
+  - id: "build_content_migration"
+    type: "flow"
+    stage: "build"
+    purpose: "Migrate content to new platform"
+
+    prompt: |
+      Migrate content maintaining:
+      - Same URLs for money pages
+      - Proper metadata
+      - Image paths (or redirect old /wp-content/uploads/)
+
+  - id: "build_staging_deploy"
+    type: "tributary"
+    stage: "build"
+    purpose: "Deploy to staging"
+
+    skill_name: "vercel_cli"
+    skill_config:
+      command: "deploy"
+      options: ["--prebuilt"]
+
+    state_writes:
+      - path: "build.staging_url"
+        from: "skill_output.url"
+
+  # ═══════════════════════════════════════════════════════════════════
+  # PHASE 5: TECHNICAL SEO IMPLEMENTATION
+  # ═══════════════════════════════════════════════════════════════════
+  - id: "tech_seo_headings"
+    type: "flow"
+    stage: "technical_seo"
+    purpose: "Audit and fix heading structure"
+
+    prompt: |
+      You are at PHASE 5.1 - Heading Rules
+
+      Audit headings:
+      - One H1 per page describing core intent
+      - H2s for major sections, H3 for subsections
+      - Don't stuff cities into every heading (use naturally)
+
+      Crawl staging and identify violations.
+
+  - id: "tech_seo_metadata"
+    type: "flow"
+    stage: "technical_seo"
+    purpose: "Implement metadata rules"
+
+    prompt: |
+      You are at PHASE 5.2 - Metadata Rules
+
+      Implement:
+      - Titles match intent + location where relevant
+      - Meta descriptions sell the click (not just repeat keywords)
+      - Canonical tag mandatory on all pages
+
+  - id: "tech_seo_schema"
+    type: "flow"
+    stage: "technical_seo"
+    purpose: "Implement structured data"
+
+    prompt: |
+      You are at PHASE 5.3 - Schema Implementation
+
+      Site-wide:
+      - Organization or LocalBusiness
+      - WebSite (with search action if applicable)
+      - BreadcrumbList
+
+      Page-level:
+      - Service pages: Service schema
+      - FAQs: FAQPage (only if FAQs visible to users)
+      - Reviews: only if following guidelines (no fake aggregateRating)
+
+    state_writes:
+      - path: "tech_seo.schema_implemented"
+        from: "output.schema_types"
+
+  - id: "tech_seo_validation"
+    type: "tributary"
+    stage: "technical_seo"
+    purpose: "Validate schema with Google tools"
+
+    skill_name: "schema_validator"
+    skill_config:
+      urls: "{{state.data.build.staging_url}}"
+
+    state_writes:
+      - path: "tech_seo.schema_valid"
+        from: "skill_output.all_valid"
+
+  # ═══════════════════════════════════════════════════════════════════
+  # PHASE 6: PERFORMANCE + CWV
+  # ═══════════════════════════════════════════════════════════════════
+  - id: "cwv_baseline"
+    type: "tributary"
+    stage: "performance"
+    purpose: "Establish CWV baseline from current site"
+
+    skill_name: "lighthouse"
+    skill_config:
+      url: "{{state.data.project.domain}}"
+      device: "mobile"
+
+    prompt: |
+      You are at PHASE 6.1 - CWV Baseline
+
+      Pull baseline metrics:
+      - PageSpeed Insights (mobile is main pain)
+      - Lighthouse
+      - GSC CWV report (field data groups)
+
+      Current CWV targets:
+      - LCP (loading): <= 2.5s
+      - INP (responsiveness): <= 200ms
+      - CLS (visual stability): <= 0.1
+
+    state_writes:
+      - path: "cwv.baseline.lcp"
+        from: "skill_output.lcp"
+      - path: "cwv.baseline.inp"
+        from: "skill_output.inp"
+      - path: "cwv.baseline.cls"
+        from: "skill_output.cls"
+
+  - id: "cwv_budget"
+    type: "flow"
+    stage: "performance"
+    purpose: "Set performance budget"
+
+    prompt: |
+      You are at PHASE 6.2 - Performance Budget
+
+      Set budgets:
+      - JS per page (initial): keep aggressively low
+      - Image formats: AVIF/WebP where possible
+      - Fonts: 1 family, limited weights, preload only what's needed
+      - Third-party scripts: minimal (kill INP)
+
+    state_writes:
+      - path: "cwv.budget"
+        from: "output.budget"
+
+  - id: "cwv_implementation"
+    type: "flow"
+    stage: "performance"
+    purpose: "Implement CWV optimizations"
+
+    prompt: |
+      You are at PHASE 6.3 - CWV Implementation
+
+      Tactics for Vercel/Next:
+      - Use image optimization properly (no 4000px images to mobile)
+      - Avoid massive client-side hydration when static/SSR possible
+      - Delay or eliminate chat widgets/heatmaps until after main interaction
+      - Preload hero image if it's LCP element
+      - Reserve space for images/embeds (CLS killer)
+
+  - id: "cwv_staging_test"
+    type: "tributary"
+    stage: "performance"
+    purpose: "Test CWV on staging"
+
+    skill_name: "lighthouse"
+    skill_config:
+      url: "{{state.data.build.staging_url}}"
+      device: "mobile"
+
+    state_writes:
+      - path: "cwv.staging.lcp"
+        from: "skill_output.lcp"
+      - path: "cwv.staging.inp"
+        from: "skill_output.inp"
+      - path: "cwv.staging.cls"
+        from: "skill_output.cls"
+
+  - id: "cwv_validation_gate"
+    type: "gate"
+    stage: "performance"
+    purpose: "Verify CWV targets achievable"
+
+    gate_config:
+      criteria:
+        - name: "lcp_target"
+          check: "state.data.cwv.staging.lcp <= 2.5"
+        - name: "inp_target"
+          check: "state.data.cwv.staging.inp <= 200"
+        - name: "cls_target"
+          check: "state.data.cwv.staging.cls <= 0.1"
+      on_pass: "qa_seo_crawl"
+      on_fail: "cwv_implementation"
+      max_retries: 3
+
+  # ═══════════════════════════════════════════════════════════════════
+  # PHASE 7: QA + LAUNCH
+  # ═══════════════════════════════════════════════════════════════════
+  - id: "qa_seo_crawl"
+    type: "flow"
+    stage: "qa"
+    purpose: "SEO QA crawl of staging"
+
+    prompt: |
+      You are at PHASE 7.1 - SEO QA (Pre-Launch)
+
+      Crawl staging site and verify:
+      - No broken internal links
+      - Correct canonicals
+      - Correct title/H1 presence
+      - Schema validates
+      - No redirect chains (A->B->C)
+      - XML sitemap exists and matches indexable pages
+      - Robots.txt correct for production vs staging
+      - Old WP URLs that matter (uploads, PDFs) resolve or redirect
+
+    state_writes:
+      - path: "qa.seo_crawl_pass"
+        from: "output.all_pass"
+      - path: "qa.issues"
+        from: "output.issues"
+
+  - id: "qa_redirect_test"
+    type: "flow"
+    stage: "qa"
+    purpose: "Verify redirect rules work"
+
+    prompt: |
+      Test redirect rules:
+      - Old -> new = 301/308 correct
+      - No redirect chains
+      - Top 20 legacy URLs redirect correctly
+
+      REDIRECT MAP: {{state.data.redirects.map}}
+
+    state_writes:
+      - path: "qa.redirects_pass"
+        from: "output.all_pass"
+
+  - id: "qa_tracking"
+    type: "flow"
+    stage: "qa"
+    purpose: "Verify tracking implementation"
+
+    prompt: |
+      You are at PHASE 7.2 - Tracking QA
+
+      Verify:
+      - GA4 events firing
+      - Conversion tracking (forms, calls, bookings)
+      - GSC verification ready for domain
+      - Call tracking numbers don't break NAP consistency
+
+    state_writes:
+      - path: "qa.tracking_pass"
+        from: "output.all_pass"
+
+  - id: "qa_final_gate"
+    type: "gate"
+    stage: "qa"
+    purpose: "Final QA gate before launch"
+
+    gate_config:
+      criteria:
+        - name: "seo_crawl_pass"
+          check: "state.data.qa.seo_crawl_pass == True"
+        - name: "redirects_pass"
+          check: "state.data.qa.redirects_pass == True"
+        - name: "tracking_pass"
+          check: "state.data.qa.tracking_pass == True"
+      on_pass: "launch_freeze_wp"
+      on_fail: "qa_fix"
+      max_retries: 2
+
+  - id: "qa_fix"
+    type: "flow"
+    stage: "qa"
+    purpose: "Fix QA issues"
+
+    prompt: |
+      QA issues found:
+      {{state.data.qa.issues}}
+
+      Fix all issues before proceeding to launch.
+
+  - id: "launch_freeze_wp"
+    type: "flow"
+    stage: "launch"
+    purpose: "Freeze WordPress content"
+
+    prompt: |
+      You are at PHASE 8.1 - Freeze WP
+
+      Freeze WordPress content changes.
+      Don't migrate a moving target.
+
+      Confirm with user that WP is frozen.
+
+    on_complete:
+      - action: "ask_user"
+        question: "Confirm WordPress content is frozen for migration?"
+
+  - id: "launch_push_redirects"
+    type: "flow"
+    stage: "launch"
+    purpose: "Push final redirect rules"
+
+    prompt: |
+      Push final redirect rules to Vercel.
+
+  - id: "launch_dns_swap"
+    type: "flow"
+    stage: "launch"
+    purpose: "Swap DNS to Vercel"
+
+    prompt: |
+      You are at PHASE 8.3 - DNS Swap
+
+      Swap DNS to Vercel.
+
+      CRITICAL: Have rollback plan ready.
+
+    state_writes:
+      - path: "launch.dns_swapped"
+        from: "output.swapped"
+      - path: "launch.swap_time"
+        from: "output.timestamp"
+
+  - id: "launch_validation"
+    type: "flow"
+    stage: "launch"
+    purpose: "Post-launch validation"
+
+    prompt: |
+      You are at PHASE 8.4 - Validate Launch
+
+      Validate:
+      - Homepage loads
+      - Top money pages load
+      - Top 20 legacy URLs redirect correctly
+
+    state_writes:
+      - path: "launch.validation_pass"
+        from: "output.all_pass"
+
+  - id: "launch_sitemap_submit"
+    type: "flow"
+    stage: "launch"
+    purpose: "Submit sitemap to GSC"
+
+    prompt: |
+      Submit sitemap in GSC.
+
+  - id: "launch_monitoring_setup"
+    type: "flow"
+    stage: "launch"
+    purpose: "Set up post-launch monitoring"
+
+    prompt: |
+      You are at PHASE 8.6 - Monitoring Setup
+
+      Monitor:
+      - Crawl errors
+      - Index coverage
+      - CWV report groups
+      - Rankings for priority pages
+
+    state_writes:
+      - path: "launch.monitoring_configured"
+        from: "output.configured"
+
+  # ═══════════════════════════════════════════════════════════════════
+  # PHASE 8: POST-LAUNCH ITERATION
+  # ═══════════════════════════════════════════════════════════════════
+  - id: "postlaunch_new_pages"
+    type: "flow"
+    stage: "post_launch"
+    purpose: "Build missing pages from keyword map"
+
+    prompt: |
+      You are at PHASE 9.1 - Build Missing Pages
+
+      From keyword map, identify and build:
+      - Problem/FAQ long-tail pages
+      - Service pages for uncovered keywords
+
+  - id: "postlaunch_internal_links"
+    type: "flow"
+    stage: "post_launch"
+    purpose: "Strengthen internal linking"
+
+    prompt: |
+      Strengthen internal linking:
+      - Every service page linked from nav, homepage, and related FAQs
+      - Build topic clusters
+
+  - id: "postlaunch_local_trust"
+    type: "flow"
+    stage: "post_launch"
+    purpose: "Add local trust blocks"
+
+    prompt: |
+      Add local trust blocks:
+      - Service area
+      - FAQs
+      - Testimonials (real)
+      - Directions/parking (local conversion booster)
+
+  - id: "postlaunch_cwv_iteration"
+    type: "flow"
+    stage: "post_launch"
+    purpose: "Continue CWV improvements"
+
+    prompt: |
+      Keep improving CWV:
+      - Especially INP (third-party scripts usually the culprit)
+      - Monitor field data in GSC
+
+  - id: "success"
+    type: "terminal"
+    stage: "complete"
+    purpose: "Migration completed successfully"
+
+    on_reach:
+      - action: "trigger_learning"
+        outcome: "success"
+      - action: "write_memory"
+        content: "successful_patterns"
+      - action: "present_completion"
+        message: |
+          MIGRATION COMPLETE
+
+          Site successfully migrated from WordPress to Vercel.
+
+          Post-launch checklist:
+          1. Monitor GSC for crawl errors (daily for 2 weeks)
+          2. Check index coverage (weekly)
+          3. Track rankings for priority keywords
+          4. Continue CWV optimization
+
+  - id: "failure"
+    type: "terminal"
+    stage: "complete"
+    purpose: "Migration failed - rollback needed"
+
+    on_reach:
+      - action: "trigger_learning"
+        outcome: "failure"
+      - action: "log_failure_mode"
+      - action: "present_failure"
+        message: |
+          MIGRATION FAILED
+
+          Reason: {{state.data.failure_reason}}
+
+          Rollback instructions:
+          1. Revert DNS to old host
+          2. Verify old site accessible
+          3. Review failure logs
+
+  - id: "escalate"
+    type: "terminal"
+    stage: "complete"
+    purpose: "Needs human intervention"
+
+    on_reach:
+      - action: "notify_human"
+        message: "{{state.data.escalation_reason}}"
+
+# ═══════════════════════════════════════════════════════════════════
+# EDGES
+# ═══════════════════════════════════════════════════════════════════
+edges:
+  # ═══════════════════════════════════════════════════════════════════
+  # PRE-FLIGHT EDGES (Phase 0)
+  # ═══════════════════════════════════════════════════════════════════
+  - id: "e_preflight_config_tools"
+    from: "preflight_config_check"
+    to: "preflight_tools_check"
+    type: "laminar"
+    priority: 1
+
+  - id: "e_preflight_tools_inventory"
+    from: "preflight_tools_check"
+    to: "preflight_data_inventory"
+    type: "laminar"
+    guard: "gate_passed == true"
+    priority: 1
+
+  - id: "e_preflight_tools_fail"
+    from: "preflight_tools_check"
+    to: "preflight_tools_missing"
+    type: "turbulent"
+    guard: "gate_passed == false"
+    priority: 2
+
+  - id: "e_preflight_inventory_gate"
+    from: "preflight_data_inventory"
+    to: "preflight_validation_gate"
+    type: "laminar"
+    priority: 1
+
+  - id: "e_preflight_gate_intake"
+    from: "preflight_validation_gate"
+    to: "intake"
+    type: "laminar"
+    guard: "gate_passed == true"
+    priority: 1
+
+  - id: "e_preflight_gate_blocked"
+    from: "preflight_validation_gate"
+    to: "preflight_blocked"
+    type: "turbulent"
+    guard: "gate_passed == false"
+    priority: 2
+
+  # ═══════════════════════════════════════════════════════════════════
+  # INTAKE -> KEYWORD STRATEGY EDGES
+  # ═══════════════════════════════════════════════════════════════════
+  # Intake -> Keyword Strategy
+  - id: "e_intake_keyword"
+    from: "intake"
+    to: "keyword_build_universe"
+    type: "laminar"
+    guard: "state.data.get('ready_for_keyword_strategy', False) == True"
+    priority: 1
+
+  # Keyword Strategy flow
+  - id: "e_universe_competitor"
+    from: "keyword_build_universe"
+    to: "keyword_competitor_check"
+    type: "laminar"
+    priority: 1
+
+  - id: "e_competitor_pagemap"
+    from: "keyword_competitor_check"
+    to: "keyword_page_map"
+    type: "laminar"
+    priority: 1
+
+  - id: "e_pagemap_scoring"
+    from: "keyword_page_map"
+    to: "keyword_scoring"
+    type: "laminar"
+    priority: 1
+
+  - id: "e_scoring_gate"
+    from: "keyword_scoring"
+    to: "keyword_validation_gate"
+    type: "laminar"
+    priority: 1
+
+  # URL Mapping flow
+  - id: "e_gate_crawl"
+    from: "keyword_validation_gate"
+    to: "mapping_crawl"
+    type: "laminar"
+    priority: 1
+
+  - id: "e_crawl_gsc"
+    from: "mapping_crawl"
+    to: "mapping_gsc_pull"
+    type: "laminar"
+    priority: 1
+
+  - id: "e_gsc_backlinks"
+    from: "mapping_gsc_pull"
+    to: "mapping_backlinks_pull"
+    type: "laminar"
+    priority: 1
+
+  - id: "e_backlinks_sheet"
+    from: "mapping_backlinks_pull"
+    to: "mapping_master_sheet"
+    type: "laminar"
+    priority: 1
+
+  - id: "e_backlinks_skip_sheet"
+    from: "mapping_backlinks_skip"
+    to: "mapping_master_sheet"
+    type: "laminar"
+    priority: 1
+
+  - id: "e_sheet_validation"
+    from: "mapping_master_sheet"
+    to: "mapping_validation_gate"
+    type: "laminar"
+    priority: 1
+
+  # Architecture flow
+  - id: "e_mapping_future"
+    from: "mapping_validation_gate"
+    to: "future_url_planning"
+    type: "laminar"
+    priority: 1
+
+  - id: "e_urlplan_redirect"
+    from: "future_url_planning"
+    to: "future_redirect_mapping"
+    type: "laminar"
+    priority: 1
+
+  - id: "e_redirect_vercel"
+    from: "future_redirect_mapping"
+    to: "future_vercel_config"
+    type: "laminar"
+    priority: 1
+
+  - id: "e_vercel_ghost"
+    from: "future_vercel_config"
+    to: "future_wordpress_ghost"
+    type: "laminar"
+    priority: 1
+
+  # Build flow
+  - id: "e_ghost_build"
+    from: "future_wordpress_ghost"
+    to: "build_repo_setup"
+    type: "laminar"
+    priority: 1
+
+  - id: "e_repo_env"
+    from: "build_repo_setup"
+    to: "build_environment_config"
+    type: "laminar"
+    priority: 1
+
+  - id: "e_env_cms"
+    from: "build_environment_config"
+    to: "build_cms_decision"
+    type: "laminar"
+    priority: 1
+
+  - id: "e_cms_select"
+    from: "build_cms_decision"
+    to: "build_cms_selection"
+    type: "laminar"
+    guard: "state.data.build.cms_approach is None"
+    priority: 2
+
+  - id: "e_select_content"
+    from: "build_cms_selection"
+    to: "build_content_migration"
+    type: "laminar"
+    priority: 1
+
+  - id: "e_cms_content"
+    from: "build_cms_decision"
+    to: "build_content_migration"
+    type: "laminar"
+    guard: "state.data.build.cms_approach is not None"
+    priority: 1
+
+  - id: "e_content_staging"
+    from: "build_content_migration"
+    to: "build_staging_deploy"
+    type: "laminar"
+    priority: 1
+
+  # Technical SEO flow
+  - id: "e_staging_headings"
+    from: "build_staging_deploy"
+    to: "tech_seo_headings"
+    type: "laminar"
+    priority: 1
+
+  - id: "e_headings_meta"
+    from: "tech_seo_headings"
+    to: "tech_seo_metadata"
+    type: "laminar"
+    priority: 1
+
+  - id: "e_meta_schema"
+    from: "tech_seo_metadata"
+    to: "tech_seo_schema"
+    type: "laminar"
+    priority: 1
+
+  - id: "e_schema_validate"
+    from: "tech_seo_schema"
+    to: "tech_seo_validation"
+    type: "laminar"
+    priority: 1
+
+  # CWV flow
+  - id: "e_seovalidate_cwv"
+    from: "tech_seo_validation"
+    to: "cwv_baseline"
+    type: "laminar"
+    priority: 1
+
+  - id: "e_baseline_budget"
+    from: "cwv_baseline"
+    to: "cwv_budget"
+    type: "laminar"
+    priority: 1
+
+  - id: "e_budget_impl"
+    from: "cwv_budget"
+    to: "cwv_implementation"
+    type: "laminar"
+    priority: 1
+
+  - id: "e_impl_test"
+    from: "cwv_implementation"
+    to: "cwv_staging_test"
+    type: "laminar"
+    priority: 1
+
+  - id: "e_test_gate"
+    from: "cwv_staging_test"
+    to: "cwv_validation_gate"
+    type: "laminar"
+    priority: 1
+
+  # QA flow
+  - id: "e_cwv_qa"
+    from: "cwv_validation_gate"
+    to: "qa_seo_crawl"
+    type: "laminar"
+    priority: 1
+
+  - id: "e_seocrawl_redirect"
+    from: "qa_seo_crawl"
+    to: "qa_redirect_test"
+    type: "laminar"
+    priority: 1
+
+  - id: "e_redirect_tracking"
+    from: "qa_redirect_test"
+    to: "qa_tracking"
+    type: "laminar"
+    priority: 1
+
+  - id: "e_tracking_finalgate"
+    from: "qa_tracking"
+    to: "qa_final_gate"
+    type: "laminar"
+    priority: 1
+
+  - id: "e_gate_fix"
+    from: "qa_final_gate"
+    to: "qa_fix"
+    type: "turbulent"
+    guard: "state.data.qa.all_pass != True"
+    priority: 2
+    max_retries: 2
+
+  - id: "e_fix_seocrawl"
+    from: "qa_fix"
+    to: "qa_seo_crawl"
+    type: "laminar"
+    priority: 1
+
+  # Launch flow
+  - id: "e_finalgate_freeze"
+    from: "qa_final_gate"
+    to: "launch_freeze_wp"
+    type: "laminar"
+    guard: "state.data.qa.all_pass == True"
+    priority: 1
+
+  - id: "e_freeze_redirects"
+    from: "launch_freeze_wp"
+    to: "launch_push_redirects"
+    type: "laminar"
+    priority: 1
+
+  - id: "e_redirects_dns"
+    from: "launch_push_redirects"
+    to: "launch_dns_swap"
+    type: "laminar"
+    priority: 1
+
+  - id: "e_dns_validate"
+    from: "launch_dns_swap"
+    to: "launch_validation"
+    type: "laminar"
+    priority: 1
+
+  - id: "e_validate_sitemap"
+    from: "launch_validation"
+    to: "launch_sitemap_submit"
+    type: "laminar"
+    guard: "state.data.launch.validation_pass == True"
+    priority: 1
+
+  - id: "e_validate_fail"
+    from: "launch_validation"
+    to: "failure"
+    type: "laminar"
+    guard: "state.data.launch.validation_pass != True"
+    priority: 2
+
+  - id: "e_sitemap_monitor"
+    from: "launch_sitemap_submit"
+    to: "launch_monitoring_setup"
+    type: "laminar"
+    priority: 1
+
+  # Post-launch flow
+  - id: "e_monitor_newpages"
+    from: "launch_monitoring_setup"
+    to: "postlaunch_new_pages"
+    type: "laminar"
+    priority: 1
+
+  - id: "e_newpages_links"
+    from: "postlaunch_new_pages"
+    to: "postlaunch_internal_links"
+    type: "laminar"
+    priority: 1
+
+  - id: "e_links_trust"
+    from: "postlaunch_internal_links"
+    to: "postlaunch_local_trust"
+    type: "laminar"
+    priority: 1
+
+  - id: "e_trust_cwv"
+    from: "postlaunch_local_trust"
+    to: "postlaunch_cwv_iteration"
+    type: "laminar"
+    priority: 1
+
+  - id: "e_cwviter_success"
+    from: "postlaunch_cwv_iteration"
+    to: "success"
+    type: "laminar"
+    priority: 1
+
+  # Global failure paths
+  - id: "e_any_escalate"
+    from: "*"
+    to: "escalate"
+    type: "laminar"
+    guard: "state.data.get('needs_human', False) == True"
+    priority: 100
+
+  - id: "e_max_steps_failure"
+    from: "*"
+    to: "failure"
+    type: "laminar"
+    guard: "state.counters.total_steps >= state.brain.execution.max_steps"
+    priority: 99
+
+  - id: "e_critical_error"
+    from: "*"
+    to: "failure"
+    type: "laminar"
+    guard: "state.data.get('critical_error', False) == True"
+    priority: 98
+
+# ═══════════════════════════════════════════════════════════════════
+# RELATIONSHIPS (for learning)
+# ═══════════════════════════════════════════════════════════════════
+relationships:
+  - from: "keyword_validation_gate"
+    to: "mapping_quality"
+    type: "informs"
+    weight: 1.0
+    note: "Good keyword strategy leads to better URL mapping decisions"
+
+  - from: "mapping_validation_gate"
+    to: "redirect_completeness"
+    type: "grounds"
+    weight: 1.0
+    note: "Complete URL mapping grounds redirect accuracy"
+
+  - from: "cwv_validation_gate"
+    to: "launch_success"
+    type: "correlates"
+    weight: 0.9
+    note: "CWV pass strongly correlates with successful migration"
+
+  - from: "qa_final_gate"
+    to: "seo_preservation"
+    type: "grounds"
+    weight: 1.0
+    note: "QA pass grounds SEO equity preservation"
+
+  - from: "launch_validation"
+    to: "migration_success"
+    type: "determines"
+    weight: 1.0
+    note: "Post-launch validation determines migration success"

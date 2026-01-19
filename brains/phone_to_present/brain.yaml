@@ -1,0 +1,119 @@
+brain:
+  id: "phone-to-present-001"
+  name: "phone_to_present"
+  version: "1.0.0"
+  created_at: "2026-01-14T00:00:00+00:00"
+  updated_at: "2026-01-14T00:00:00+00:00"
+  purpose: "Analyze phone call logs and generate client-ready sales presentations with FTE-based pricing for MyBCAT services."
+
+objectives:
+  primary_goal: "Transform raw phone call data into a professional sales presentation that diagnoses call handling performance, quantifies impact, and recommends service options."
+  objectives:
+    - description: "Compute open-hours performance KPIs"
+      success_criteria:
+        - "Primary KPIs (answer rate, miss rate, grade, missed/week) are computed from OPEN HOURS inbound calls only."
+        - "Inbound open/closed splits reconcile: TOTAL_INBOUND_ALL == TOTAL_INBOUND (open) + TOTAL_CLOSED (closed)."
+        - "Disposition/direction mappings are reviewed; any high-unknown or redirected/transferred semantics are confirmed or explicitly caveated."
+      priority: 1
+    - description: "Model concurrency and staffing requirements"
+      success_criteria:
+        - "BASE_FTE is computed from time-weighted concurrency CDF at 90% coverage (exclude level 0; floor at 1.0)."
+        - "Monte Carlo simulation uses a deterministic seed derived from stable dataset fingerprint; MC_FTE_90 reconciles with BASE_FTE within tolerance."
+        - "SHRINKAGE_FTE follows max(BASE_FTE / 0.80, 1.25) with consistent rounding policy."
+      priority: 1
+    - description: "Calculate pricing, savings, ROI, and breakeven"
+      success_criteria:
+        - "Pricing formulas and constants match `phone_to_present/workflow/phase5_pricing.md`."
+        - "Optional checks pass via `phone_to_present/scripts/verify_financials.py` when a manifest is present."
+        - "Client-facing deck shows only final weekly/monthly/annual numbers (no rates, hours, or rate×FTE breakdowns)."
+      priority: 1
+    - description: "Generate and QA deck deliverables"
+      success_criteria:
+        - "All template placeholders are replaced (0 unreplaced `{{VARIABLE}}` tokens)."
+        - "Template-referenced charts exist (or placeholders are generated) and render correctly in HTML + PPTX."
+        - "Slide 18 (Paths Forward) uses the required v4 HTML `<table class=\"pf-table\">` construction."
+      priority: 1
+  deliverables:
+    - name: "gold_calls.csv"
+      format: "CSV (standardized call records)"
+      required: true
+    - name: "analysis_manifest.json"
+      format: "JSON (metrics, FTE, pricing, confirmations, caveats)"
+      required: true
+    - name: "presentation.md"
+      format: "Marp markdown (source of truth)"
+      required: true
+    - name: "presentation.html"
+      format: "Rendered HTML slides"
+      required: false
+    - name: "presentation.pptx"
+      format: "Rendered PPTX deck"
+      required: false
+    - name: "presentation.render_manifest.json"
+      format: "JSON (render QA + hashes + slide count)"
+      required: false
+    - name: "charts/"
+      format: "Directory of required PNG charts"
+      required: true
+
+constraints:
+  must_do:
+    - "Confirm timezone, business hours, closures, and per-location overrides before analysis."
+    - "Compute primary KPIs from OPEN HOURS inbound calls only."
+    - "Use a deterministic Monte Carlo seed derived from stable dataset fingerprint."
+    - "Run deterministic pricing/FTE checks before deck generation when possible (see verification checklist)."
+    - "Treat closures as CLOSED hours even during normal business hours."
+    - "Use `output/<client_slug>/presentation.md` as the source of truth for all renders."
+    - "Slide 18 (Paths Forward) must be built as v4 HTML (no markdown table)."
+    - "Client-facing pricing/options slides must list services included per option and savings vs in-house."
+    - "If mentioning FTE, use approved phrasing separate from pricing (e.g., \"Your call volume requires approximately X dedicated staff to answer 90%+ of calls.\")."
+    - "Perform automated + visual QA (HTML + PPTX) before delivery."
+  must_not:
+    - "Show FTE numbers adjacent to prices in any client-facing table."
+    - "Show hourly rates, OT rates, weekend premiums, or formula breakdowns in the client deck."
+    - "Proceed with ambiguous redirected/transferred/forwarded semantics without confirmation."
+    - "Deliver any deck with unreplaced template variables."
+    - "Include emojis in client-facing materials."
+    - "Use decorative iconography in the client deck (except the specified SVG icons in Slide 18 v4 Paths Forward table)."
+
+learning:
+  enabled: true
+  mode: "auto_safe"
+  auto_update:
+    edge_priorities: true
+    relationship_weights: true
+    guard_thresholds: false
+    node_prompts: false
+    add_nodes: false
+    remove_nodes: false
+    add_edges: false
+    remove_edges: false
+  requires_approval:
+    - "structural_changes"
+    - "constraint_changes"
+    - "pricing_formula_changes"
+    - "quality_threshold_changes"
+    - "new_skills"
+  feedback_sources:
+    - "outcome"
+    - "user_feedback"
+    - "quality_scores"
+
+execution:
+  max_steps: 200
+  max_parallel: 5
+  timeout_seconds: 7200
+  max_retries: 3
+
+skills:
+  available: []
+  auto_discover: true
+
+metadata:
+  tags:
+    - "phone"
+    - "analysis"
+    - "pricing"
+    - "presentation"
+    - "mybcat"
+  notes: "Derived from `phone_to_present/` workflow docs, template contract, and verification checklist."

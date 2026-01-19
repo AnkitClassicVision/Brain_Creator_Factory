@@ -1,0 +1,48 @@
+{
+  "client": {
+    "client_name": "Blacksburg Eye Associates (Test)",
+    "client_tagline": "",
+    "website_url": "",
+    "specialty": "Optometry",
+    "timezone": "America/New_York"
+  },
+  "confirmations": {
+    "timezone": "assumed",
+    "business_hours": "assumed",
+    "disposition_mapping": "assumed",
+    "closures": "unconfirmed",
+    "location_schedules": "assumed"
+  },
+  "business_hours": {
+    "Mon": ["08:00", "17:00"],
+    "Tue": ["08:00", "17:00"],
+    "Wed": ["08:00", "17:00"],
+    "Thu": ["08:00", "17:00"],
+    "Fri": ["08:00", "17:00"],
+    "Sat": null,
+    "Sun": null
+  },
+  "assumptions": {
+    "notes": "Business hours, specialty, and revenue model inputs are assumed for red-team testing; replace with client-confirmed values in production.",
+    "conversion_pct": 15,
+    "appt_seeking_pct": 60,
+    "new_patient_pct": 35,
+    "avg_appt_value": 500,
+    "rhc_growth_addon_weekly": 500,
+    "shrinkage_pct": 20
+  },
+  "pilot": {
+    "enabled": false,
+    "level": 1,
+    "calculation": "base"
+  },
+  "analysis": {
+    "require_confirmed_metadata": false,
+    "require_disposition_mapping_confirmation": false,
+    "target_coverage": 0.9,
+    "num_simulations": 1000,
+    "min_calls_for_worst_window": 5,
+    "business_hours_range_display": [8, 18],
+    "aht_min_minutes": 3.5
+  }
+}

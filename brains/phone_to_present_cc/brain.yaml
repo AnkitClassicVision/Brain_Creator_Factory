@@ -57,24 +57,148 @@ objectives:
       required: true
 
 constraints:
+  # ═══════════════════════════════════════════════════════════════════
+  # STOP RULES - When to halt and ask user (CRITICAL)
+  # Based on Casey Optical Too workflow errors
+  # ═══════════════════════════════════════════════════════════════════
+  stop_rules:
+    - condition: "templates/presentation_template.md is missing"
+      action: "STOP and ask user - DO NOT generate from scratch"
+      reason: "Generated templates have untested CSS/HTML and look unprofessional"
+
+    - condition: "Template does NOT contain class='pf-table' (v4 Paths Forward HTML)"
+      action: "STOP and ask user - template must be updated"
+      reason: "Markdown tables render without styling (Error 2 from Casey Optical)"
+
+    - condition: "Any required reference file is missing (slide18_paths_forward_v4.md)"
+      action: "STOP and ask user - DO NOT improvise"
+      reason: "Reference files define required structure"
+
+    - condition: "FTE calculation results in less than 40 hours weekly coverage"
+      action: "STOP and ask user - verify business hours"
+      reason: "Values below 40 hours suggest data entry error"
+
+    - condition: "Calculated pricing falls below minimums (Pilot: $600, Inbound/RHC: $480)"
+      action: "STOP and apply minimum, then confirm with user"
+      reason: "Pricing minimums are business requirements (Error 4)"
+
+    - condition: "Disposition unknown_pct > 10%"
+      action: "STOP and ask user - data quality issue"
+      reason: "High unknown dispositions indicate mapping problems"
+
+    - condition: "Monte Carlo FTE differs from CDF FTE by more than 1.0"
+      action: "STOP and reconcile - calculation error likely"
+      reason: "FTE methods should agree within tolerance"
+
+    - condition: "Any chart file size is 0 bytes"
+      action: "STOP and escalate - chart generation failed"
+      reason: "Empty charts will break presentation (Error 6)"
+
+    - condition: "Quality grade is D or F"
+      action: "STOP and ask user before proceeding"
+      reason: "Poor grade may indicate data issues or require special handling"
+
+  # ═══════════════════════════════════════════════════════════════════
+  # MUST DO RULES - Mandatory actions (with explicit validations)
+  # ═══════════════════════════════════════════════════════════════════
   must_do:
-    - "Confirm timezone, business hours, closures, and per-location overrides before analysis."
-    - "Compute primary KPIs from OPEN HOURS inbound calls only."
-    - "Use a deterministic Monte Carlo seed derived from stable dataset fingerprint."
-    - "Run deterministic pricing/FTE checks before deck generation when possible (see verification checklist)."
-    - "Treat closures as CLOSED hours even during normal business hours."
-    - "Use `output/<client_slug>/presentation.md` as the source of truth for all renders."
-    - "Slide 18 (Paths Forward) must be built as v4 HTML (no markdown table)."
-    - "Client-facing pricing/options slides must list services included per option and savings vs in-house."
-    - "If mentioning FTE, use approved phrasing separate from pricing (e.g., \"Your call volume requires approximately X dedicated staff to answer 90%+ of calls.\")."
-    - "Perform automated + visual QA (HTML + PPTX) before delivery."
+    # === PRE-FLIGHT CHECKS (NEW) ===
+    - "Run pre-flight checks before starting workflow"
+    - "STOP and ask user if templates/presentation_template.md is missing - DO NOT generate from scratch"
+    - "Verify template includes v4 Paths Forward HTML (pf-table class) before proceeding"
+    - "Load config/pricing_constants.yaml and validate all minimums are present"
+
+    # === DISCOVERY ===
+    - "Confirm timezone, business hours, closures, and per-location overrides before analysis"
+    - "Explicitly ask about Pilot Program inclusion (Yes/No) - do not assume"
+
+    # === ANALYSIS ===
+    - "Compute primary KPIs from OPEN HOURS inbound calls only"
+    - "Use a deterministic Monte Carlo seed derived from stable dataset fingerprint"
+    - "Treat closures as CLOSED hours even during normal business hours"
+
+    # === PRICING (with minimum enforcement) ===
+    - "Apply pricing minimums: Pilot >= $600, Inbound/RHC >= $480, RHC+Growth >= $980"
+    - "Enforce minimum 40 weekly hours for FTE calculation"
+    - "Run deterministic pricing/FTE checks before deck generation when possible"
+    - "Log any minimum enforcement: 'Applied minimum: calculated $X, set to $Y'"
+
+    # === CHARTS (with verification) ===
+    - "Validate all chart files exist and have size > 0 before presentation phase"
+    - "Verify chart dimensions are correct (1000x700 or as specified)"
+
+    # === PRESENTATION (with validation) ===
+    - "Use `output/<client_slug>/presentation.md` as the source of truth for all renders"
+    - "Slide 18 (Paths Forward) must be built as v4 HTML (no markdown table)"
+    - "Verify zero unreplaced {{PLACEHOLDER}} tokens after template population"
+    - "Client-facing pricing/options slides must list services included per option and savings vs in-house"
+    - "If mentioning FTE, use approved phrasing separate from pricing"
+
+    # === QA (mandatory - never skip) ===
+    - "Run visual verification on slides 1, 5, 8, 18 before marking complete"
+    - "Perform automated + visual QA (HTML + PPTX) before delivery"
+    - "If Slide 18 uses markdown table, STOP and fix to use v4 HTML"
+    - "Verify all image paths resolve to existing files"
+
+  # ═══════════════════════════════════════════════════════════════════
+  # MUST NOT RULES - Forbidden actions (NEVER do these)
+  # ═══════════════════════════════════════════════════════════════════
   must_not:
-    - "Show FTE numbers adjacent to prices in any client-facing table."
-    - "Show hourly rates, OT rates, weekend premiums, or formula breakdowns in the client deck."
-    - "Proceed with ambiguous redirected/transferred/forwarded semantics without confirmation."
-    - "Deliver any deck with unreplaced template variables."
-    - "Include emojis in client-facing materials."
-    - "Use decorative iconography in the client deck (except the specified SVG icons in Slide 18 v4 Paths Forward table)."
+    # === NEVER IMPROVISE ===
+    - "Generate presentation content from scratch when template is missing - ALWAYS stop and ask"
+    - "Use a markdown table for Slide 18 - MUST use v4 HTML pf-table structure"
+    - "Skip the template validation step"
+    - "Proceed with a template that doesn't match the slide18_paths_forward_v4.md specification"
+    - "Guess or assume values for missing data - always ask user"
+    - "Mark a phase complete if validation fails - FIX first"
+
+    # === PRICING RULES ===
+    - "Use pricing below minimums (Pilot: $600/week, Inbound/RHC: $480, RHC+Growth: $980, Hire: $960)"
+    - "Calculate FTE for less than 40 weekly hours"
+    - "Show FTE numbers adjacent to prices in any client-facing table"
+    - "Show hourly rates, OT rates, weekend premiums, or formula breakdowns in the client deck"
+
+    # === DATA QUALITY ===
+    - "Proceed with ambiguous redirected/transferred/forwarded semantics without confirmation"
+    - "Proceed with disposition unknown_pct > 10% without user confirmation"
+
+    # === OUTPUT RULES ===
+    - "Skip visual verification of rendered HTML before marking complete"
+    - "Deliver any deck with unreplaced template variables ({{PLACEHOLDER}} tokens)"
+    - "Include emojis in client-facing materials"
+    - "Use decorative iconography in the client deck (except specified SVG icons in Slide 18)"
+    - "Trust command exit code without verifying output files exist and have size > 0"
+
+    # === QA RULES ===
+    - "Skip any QA step - all QA is mandatory"
+    - "Deliver presentation without visual verification of critical slides (1, 5, 8, 18)"
+
+# ═══════════════════════════════════════════════════════════════════
+# BUSINESS CONSTANTS - Pricing minimums and thresholds
+# ═══════════════════════════════════════════════════════════════════
+config:
+  pricing_minimums:
+    PILOT_WEEKLY_MIN: 600           # $600/week minimum for pilot
+    INBOUND_WEEKLY_MIN: 480         # $480/week minimum (1 FTE)
+    RHC_WEEKLY_MIN: 480             # $480/week minimum (1 FTE)
+    RHC_GROWTH_WEEKLY_MIN: 980      # $480 + $500 add-on minimum
+    HIRE_WEEKLY_MIN: 960            # $960/week minimum (1 FTE)
+
+  coverage_minimums:
+    WEEKLY_HOURS_MIN: 40            # Minimum weekly hours for any calculation
+    FTE_MIN: 1.0                    # Minimum FTE (1 full-time equivalent)
+    SHRINKAGE_FTE_MIN: 1.25         # Minimum shrinkage-adjusted FTE
+
+  thresholds:
+    DISPOSITION_UNKNOWN_MAX_PCT: 10 # Max acceptable unknown dispositions
+    FTE_RECONCILIATION_TOLERANCE: 1.0  # Max allowed diff between CDF and MC
+    CHART_MIN_SIZE_BYTES: 1000      # Minimum chart file size
+
+  critical_slides:
+    - 1   # Title
+    - 5   # Primary KPIs
+    - 8   # Process vs Capacity
+    - 18  # Paths Forward
 
 learning:
   enabled: true

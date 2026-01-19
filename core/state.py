@@ -347,6 +347,18 @@ class State:
 
     def to_context(self) -> Dict[str, Any]:
         """Create a context dict for template rendering / guard evaluation."""
+        brain_context: Dict[str, Any] = self.brain or {}
+        # Flatten BrainManifest.to_dict() so templates can use:
+        # - {{brain.purpose}}
+        # - {{brain.objectives.primary_goal}}
+        # - {{brain.constraints.must_do}}
+        if isinstance(brain_context, dict) and "brain" in brain_context and "objectives" in brain_context:
+            flattened: Dict[str, Any] = dict(brain_context.get("brain", {}))
+            for key in ("objectives", "constraints", "learning", "execution", "skills", "metadata"):
+                if key in brain_context:
+                    flattened[key] = brain_context.get(key)
+            brain_context = flattened
+
         return {
             "brain_id": self.brain_id,
             "run_id": self.run_id,
@@ -355,7 +367,7 @@ class State:
             "user_request": self.user_request,
             "data": self.data,
             "counters": self.counters.to_dict(),
-            "brain": self.brain or {},
+            "brain": brain_context,
         }
 
     @classmethod

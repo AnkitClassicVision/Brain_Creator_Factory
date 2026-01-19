@@ -1,5 +1,6 @@
 # Universal Brain Template - Manifest
 # Replace {{placeholders}} with actual values
+# INCLUDES: LLM Enforcement Logic (REQUIRED for all brains)
 
 brain:
   id: "{{brain_id}}"
@@ -21,15 +22,84 @@ objectives:
       format: "{{format}}"
       required: true
 
+# ═══════════════════════════════════════════════════════════════════
+# CONSTRAINTS - LLM ENFORCEMENT LOGIC (CRITICAL)
+# These rules prevent the 7 LLM Blind Spots
+# ═══════════════════════════════════════════════════════════════════
 constraints:
+  # ─────────────────────────────────────────────────────────────────
+  # STOP RULES - When to halt and ask user (CRITICAL)
+  # Prevents: Helpfulness Bias, Implicit Assumptions
+  # ─────────────────────────────────────────────────────────────────
+  stop_rules:
+    # Template/Dependency STOP rules
+    - condition: "Required template/reference file is missing"
+      action: "STOP and ask user - DO NOT generate from scratch"
+      reason: "Generated content lacks tested styling/structure"
+
+    - condition: "Template does not match required specification"
+      action: "STOP and ask user - template must be updated"
+      reason: "Wrong structure causes rendering/format errors"
+
+    # Data Quality STOP rules
+    - condition: "Unknown/unclassified data exceeds threshold (>10%)"
+      action: "STOP and ask user - data quality issue"
+      reason: "High unknowns indicate mapping or data problems"
+
+    - condition: "Values outside expected range (anomaly detected)"
+      action: "STOP and ask user - verify input data"
+      reason: "Unusual values may indicate data entry errors"
+
+    # Validation STOP rules
+    - condition: "Any output file size is 0 bytes"
+      action: "STOP and escalate - generation failed"
+      reason: "Empty outputs will break downstream processes"
+
+  # ─────────────────────────────────────────────────────────────────
+  # MUST DO - Mandatory actions
+  # Prevents: Partial Completion, Output Trust
+  # ─────────────────────────────────────────────────────────────────
   must_do:
-    - "Follow all provided constraints"
-    - "Verify facts before including them"
-    - "Cite sources where applicable"
+    # Pre-flight checks
+    - "Run pre-flight checks before starting main workflow"
+    - "STOP and ask user if required templates/references are missing - DO NOT generate from scratch"
+    - "Verify templates match required specification before proceeding"
+    - "Load business constants config and validate all values present"
+
+    # During execution
+    - "Apply business minimums and log any enforcement"
+    - "Verify all dependent files exist and have size > 0"
+
+    # QA (mandatory - never skip)
+    - "Run verification on all critical outputs before marking complete"
+    - "Verify zero unreplaced {{PLACEHOLDER}} tokens after template population"
+    - "Verify all file paths resolve to existing files"
+
+  # ─────────────────────────────────────────────────────────────────
+  # MUST NOT - Forbidden actions (NEVER do these)
+  # Prevents: Helpfulness Bias, Format Blindness
+  # ─────────────────────────────────────────────────────────────────
   must_not:
-    - "Fabricate information"
-    - "Skip verification steps"
-    - "Ignore user constraints"
+    # Never improvise
+    - "Generate content from scratch when template/reference is missing - ALWAYS stop and ask"
+    - "Use simplified format when complex format is required"
+    - "Skip any validation or verification step"
+    - "Guess or assume values for missing data - always ask user"
+    - "Mark a phase complete if validation fails - FIX first"
+
+    # Output rules
+    - "Deliver output with unreplaced template variables ({{PLACEHOLDER}} tokens)"
+    - "Trust command exit code without verifying output files exist and have size > 0"
+    - "Skip any QA step - all QA is mandatory"
+
+# ═══════════════════════════════════════════════════════════════════
+# BUSINESS CONSTANTS REFERENCE
+# Load from config/<workflow>_constants.yaml
+# ═══════════════════════════════════════════════════════════════════
+config:
+  constants_file: "config/{{brain_name}}_constants.yaml"
+  # Critical items requiring extra validation
+  critical_items: []
 
 learning:
   enabled: true
@@ -70,4 +140,4 @@ metadata:
   tags:
     - "universal"
     - "template"
-  notes: "Generated from universal template"
+  notes: "Generated from universal template with LLM enforcement logic"

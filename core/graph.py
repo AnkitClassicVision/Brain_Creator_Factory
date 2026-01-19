@@ -11,6 +11,8 @@ from typing import Any, Dict, List, Literal, Optional, Set, Union
 from dataclasses import dataclass, field
 from enum import Enum
 
+from .context import build_eval_env
+
 
 class NodeType(str, Enum):
     """Types of nodes in the execution graph.
@@ -302,6 +304,12 @@ class Node:
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> Node:
         """Create from dictionary."""
+        stage_value = data.get("stage", "execution")
+        try:
+            stage = Stage(stage_value)
+        except Exception:
+            stage = Stage.EXECUTION
+
         output_schema = None
         if "output_schema" in data:
             os_data = data["output_schema"]
@@ -357,11 +365,11 @@ class Node:
         return cls(
             id=data.get("id", str(uuid.uuid4())),
             type=NodeType(data.get("type", "flow")),
-            stage=Stage(data.get("stage", "execution")),
+            stage=stage,
             purpose=data.get("purpose", ""),
             prompt=data.get("prompt", ""),
             output_schema=output_schema,
-            skill_name=data.get("skill_name"),
+            skill_name=data.get("skill_name") or data.get("skill"),
             skill_config=data.get("skill_config", {}),
             state_writes=state_writes,
             memory=memory,
@@ -405,9 +413,8 @@ class Guard:
         }
 
         try:
-            # Create evaluation context
-            context = {"state": state}
-            return bool(eval(self.expression, {"__builtins__": allowed_builtins}, context))
+            env = build_eval_env(state)
+            return bool(eval(self.expression, {"__builtins__": allowed_builtins}, env))
         except Exception as e:
             # Log error and return False on evaluation failure
             print(f"Guard evaluation error: {e}")
@@ -661,8 +668,8 @@ class Graph:
         graph.name = graph_meta.get("name", "")
         graph.version = graph_meta.get("version", "1.0.0")
 
-        graph.start_node = data.get("start_node", "")
-        graph.terminal_nodes = data.get("terminal_nodes", [])
+        graph.start_node = data.get("start_node", "") or graph_meta.get("start_node", "")
+        graph.terminal_nodes = data.get("terminal_nodes", []) or graph_meta.get("terminal_nodes", [])
 
         for node_data in data.get("nodes", []):
             node = Node.from_dict(node_data)

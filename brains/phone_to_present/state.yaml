@@ -1,0 +1,488 @@
+state:
+  brain_id: "phone-to-present-001"
+  run_id: "<generated at runtime>"
+  started_at: null
+  completed_at: null
+
+  # Current position in graph
+  current_node: null
+  stage: "not_started"
+
+  # User input
+  user_request: ""
+
+  # ═══════════════════════════════════════════════════════════════════
+  # WORKING DATA
+  # ═══════════════════════════════════════════════════════════════════
+  data:
+    # Workflow flags
+    workflow_started: false
+    data_file_provided: null
+    ready_for_discovery: false
+
+    # Phase 1: Discovery
+    files_found: []
+    file_count: 0
+    needs_user_selection: false
+    selected_file: null
+
+    client:
+      name: null
+      tagline: null
+      website_url: null
+      specialty: null
+      location_count: 1
+      location_list: []
+      phone_numbers: []
+
+    scraped_hours: null
+    scraped_timezone: null
+    scrape_failed: false
+
+    business_hours: {}        # {day: [open, close]}
+    business_hours_desc: ""   # Human readable
+    timezone: null            # IANA timezone
+    closures: []              # YYYY-MM-DD dates
+    location_overrides: {}    # Per-location overrides
+    lunch_hours: null
+
+    coverage:
+      total_weekly_hours: 0
+      regular_hours: 0
+      ot_hours: 0
+      has_saturday: false
+      has_sunday: false
+      saturday_hours: 0
+      sunday_hours: 0
+
+    confirmations:
+      timezone: null          # confirmed|assumed|unconfirmed
+      business_hours: null
+      closures: null
+      location_schedules: null
+      disposition_mapping: null
+
+    # Phase 2: Ingestion
+    format_type: null
+    columns_found: []
+    data_source: null
+    column_mapping: {}
+    mapping_confidence: null
+    ambiguous_columns: []
+    missing_required: []
+
+    direction_inferred: false
+    direction_confidence: 1.0
+    disposition_inferred: false
+    raw_disposition_counts: {}
+    pct_unknown_disposition: 0
+    pct_unknown_direction: 0
+
+    gold_table_path: null
+
+    quality_report:
+      total_records: 0
+      missing_timestamp: 0
+      missing_direction: 0
+      missing_duration: 0
+      missing_disposition: 0
+      zero_duration: 0
+      negative_duration: 0
+      excessive_duration: 0
+      future_timestamps: 0
+      ancient_timestamps: 0
+      disposition_answered: 0
+      disposition_missed: 0
+      disposition_voicemail: 0
+      disposition_abandoned: 0
+      disposition_redirected: 0
+      disposition_unknown: 0
+      direction_inbound: 0
+      direction_outbound: 0
+      direction_internal: 0
+      direction_unknown: 0
+      duplicates_found: 0
+      duplicates_removed: 0
+      date_min: null
+      date_max: null
+      days_span: 0
+      weeks_span: 0
+
+    quality_grade: null       # A|B|C|D|F
+
+    # Phase 3: Analysis
+    TOTAL_INBOUND_ALL: 0
+    TOTAL_INBOUND: 0          # Open hours only - PRIMARY
+    TOTAL_CLOSED: 0
+    TOTAL_OUTBOUND: 0
+    TOTAL_INTERNAL: 0
+    OPEN_PCT: 0
+    CLOSED_PCT: 0
+
+    ANSWER_RATE: 0
+    MISS_RATE: 0
+    VOICEMAIL_RATE: 0
+    MISS_RATIO: null          # "N/A" if no misses
+    MISSED_CALLS_WEEK: 0
+    ANSWERED_CALLS_WEEK: 0
+    INBOUND_CALLS_WEEK: 0
+
+    OPEN_ANSWERED: 0
+    OPEN_MISSED: 0
+    OPEN_VOICEMAIL: 0
+
+    GRADE: null
+    GRADE_DESCRIPTION: null
+    GRADE_BG_COLOR: null
+    GRADE_TEXT_COLOR: null
+
+    CLOSED_ANSWERED: 0
+    CLOSED_MISSED: 0
+    CLOSED_VOICEMAIL: 0
+    CLOSED_ANSWER_RATE: 0
+    CLOSED_MISS_RATE: 0
+
+    AVG_DURATION_SECONDS: 0
+    MEDIAN_DURATION_SECONDS: 0
+    AVG_DURATION_MINUTES: 0
+    MEDIAN_DURATION_MINUTES: 0
+    AHT_USED: 3.5             # Minimum 3.5 minutes
+
+    DAILY_VOLUME: {}          # {day: count}
+    DAILY_MISS_RATE: {}       # {day: rate}
+    WORST_DAY: null
+    WORST_DAY_RATE: 0
+
+    HOURLY_VOLUME: {}         # {hour: count}
+    HOURLY_MISS_RATE: {}      # {hour: rate}
+    PEAK_HOUR: null
+    PEAK_HOUR_VOLUME: 0
+
+    PAIN_WINDOWS_MATRIX: {}   # {hour: {day: rate}}
+
+    WORST_HOUR_1: null
+    WORST_HOUR_1_RATE: 0
+    WORST_HOUR_2: null
+    WORST_HOUR_2_RATE: 0
+    WORST_HOUR_3: null
+    WORST_HOUR_3_RATE: 0
+
+    LOCATION_STATS: null      # If multi-location
+    LOW_VOLUME_WARNING: false
+
+    # Phase 4: Concurrency
+    TRIGGERED_CONCURRENCY: {} # {level: count}
+    TIME_WEIGHTED_CONCURRENCY: {} # {level: seconds}
+    MAX_CONCURRENCY: 0
+    AVG_CONCURRENCY: 0
+    PERCENTILE_90_CONCURRENCY: 0
+    UTILIZATION_PCT: 0
+
+    MC_RESULTS:
+      fte_distribution: []
+      fte_mean: 0
+      fte_median: 0
+      fte_90th: 0
+      fte_max: 0
+    MC_SEED: null
+    NUM_SIMULATIONS: 1000
+    TARGET_COVERAGE: 0.90
+
+    SHRINKAGE_PCT: 20
+    BASE_FTE: 1.0
+    SHRINKAGE_FTE: 1.25
+    MC_FTE_90: 0
+    FTE_DIFF: 0
+    FTE_VERIFICATION_PASS: false
+    FTE_VERIFICATION_NOTE: null
+
+    PROCESS_MISS_PCT: 0
+    CAPACITY_MISS_PCT: 0
+
+    pilot:
+      enabled: false
+      level: null             # Base HC integer
+      calculation: null       # base|shrinkage
+      answer_rate: null       # Arrival-coverage answer rate at this level
+
+    # Phase 5: Pricing
+    pricing:
+      # Constants (never show to clients)
+      WEEKS_PER_MONTH: 4.33
+      MYBCAT_WEEKLY_RATE: 480
+      MYBCAT_OT_HOURLY: 18
+      INHOUSE_WEEKLY_RATE: 960
+      INHOUSE_OT_HOURLY: 36
+      WEEKEND_PREMIUM_PER_DAY: 25
+      RHC_GROWTH_ADDON_WEEKLY: 500
+
+      # Inbound
+      INBOUND_BASE: 0
+      INBOUND_OT: 0
+      INBOUND_WEEKEND: 0
+      INBOUND_WEEKLY: 0
+      INBOUND_MONTHLY: 0
+      INBOUND_ANNUAL: 0
+      INBOUND_ROI: 0
+      INBOUND_SAVINGS_WEEKLY: 0
+      INBOUND_SAVINGS_MONTHLY: 0
+      INBOUND_SAVINGS_ANNUAL: 0
+      INBOUND_SAVINGS_PCT: 0
+      INBOUND_BREAKEVEN: 0
+      INBOUND_BREAKEVEN_PCT: 0
+
+      # RHC
+      RHC_BASE: 0
+      RHC_OT: 0
+      RHC_WEEKEND: 0
+      RHC_WEEKLY: 0
+      RHC_MONTHLY: 0
+      RHC_ANNUAL: 0
+      RHC_ROI: 0
+      RHC_SAVINGS_WEEKLY: 0
+      RHC_SAVINGS_MONTHLY: 0
+      RHC_SAVINGS_ANNUAL: 0
+      RHC_SAVINGS_PCT: 0
+      RHC_BREAKEVEN: 0
+      RHC_BREAKEVEN_PCT: 0
+
+      # RHC+ Growth
+      RHC_GROWTH_WEEKLY: 0
+      RHC_GROWTH_MONTHLY: 0
+      RHC_GROWTH_ANNUAL: 0
+      RHC_GROWTH_SAVINGS_WEEKLY: 0
+      RHC_GROWTH_SAVINGS_MONTHLY: 0
+      RHC_GROWTH_SAVINGS_ANNUAL: 0
+      RHC_GROWTH_SAVINGS_PCT: 0
+
+      # In-House
+      HIRE_BASE: 0
+      HIRE_OT: 0
+      HIRE_WEEKEND: 0
+      HIRE_WEEKLY: 0
+      HIRE_MONTHLY: 0
+      HIRE_ANNUAL: 0
+      HIRE_ROI: 0
+
+      # Pilot (optional)
+      PILOT_BASE: null
+      PILOT_OT: null
+      PILOT_WEEKEND: null
+      PILOT_WEEKLY: null
+      PILOT_MONTHLY: null
+      PILOT_ANNUAL: null
+      PILOT_SAVINGS_WEEKLY: null
+      PILOT_SAVINGS_MONTHLY: null
+      PILOT_SAVINGS_ANNUAL: null
+      PILOT_SAVINGS_PCT: null
+
+      # Revenue Leak
+      APPT_SEEKING_PCT: 60
+      NEW_PATIENT_PCT: 35
+      CONVERSION_PCT: 15
+      AVG_APPT_VALUE: 500
+      AVG_PATIENT_VALUE: 500
+      REVENUE_LEAK_WEEKLY: 0
+      REVENUE_LEAK_MONTHLY: 0
+      REVENUE_LEAK_ANNUAL: 0
+
+    pricing_audit_issues: []
+    PRICING_AUDIT_PASS: false
+
+    # Phase 6: Charts
+    charts_generated:
+      answer_rate_gauge.png: false
+      pain_windows_heatmap.png: false
+      miss_distribution.png: false
+      hourly_volume.png: false
+      daily_pattern.png: false
+      fte_coverage.png: false
+
+    # Phase 7: Presentation
+    template_path: "templates/presentation_template.md"
+    template_placeholders: []
+    populated_content: null
+    unreplaced_count: 0
+    unreplaced_variables: []
+
+    presentation_files:
+      md_exists: false
+      html_exists: false
+      pptx_exists: false
+      pdf_exists: false
+
+    # Phase 7b: QA
+    qa_results:
+      slides_reviewed: 0
+      issues_found: 0
+      issues_fixed: 0
+      white_on_white_count: 0
+      margin_pass: []
+      emoji_count: 0
+      missing_images: 0
+      all_pass: false
+
+    # Phase 8: Deliverables
+    insights: []
+    manifest_path: null
+
+    # Error handling
+    critical_error: false
+    failure_reason: null
+    escalation_reason: null
+    needs_human: false
+
+  # ═══════════════════════════════════════════════════════════════════
+  # COUNTERS
+  # ═══════════════════════════════════════════════════════════════════
+  counters:
+    total_steps: 0
+    node_visits: {}           # {node_id: count}
+    retries: {}               # {node_id: count}
+    total_retries: 0
+    phase_durations: {}       # {phase: seconds}
+
+  # ═══════════════════════════════════════════════════════════════════
+  # PARALLEL TASK TRACKING
+  # ═══════════════════════════════════════════════════════════════════
+  parallel:
+    active_tasks: []
+    completed_tasks: []
+    failed_tasks: []
+
+  # ═══════════════════════════════════════════════════════════════════
+  # AUDIT TRAIL
+  # ═══════════════════════════════════════════════════════════════════
+  audit: []
+  # Each entry:
+  # - timestamp
+  # - node_id
+  # - action
+  # - input_hash
+  # - output_hash
+  # - duration_ms
+
+  # ═══════════════════════════════════════════════════════════════════
+  # LEARNING SIGNALS
+  # ═══════════════════════════════════════════════════════════════════
+  signals:
+    successes: []
+    failures: []
+    improvements: []
+
+# ═══════════════════════════════════════════════════════════════════
+# OUTPUT VARIABLES (for template)
+# ═══════════════════════════════════════════════════════════════════
+deck_variables:
+  # Template placeholders (generated contract: `phone_to_present/workflow/template_contract.md`)
+
+  # Client Info
+  CLIENT_NAME: ""
+  CLIENT_TAGLINE: ""
+  SPECIALTY: ""
+  LOCATION_COUNT: ""
+  LOCATION_LIST: ""
+
+  # Quality / methodology copy
+  DATA_SOURCE: ""
+  CONFIDENCE_LEVEL: ""
+  DISPOSITION_METHOD: ""
+  METHODOLOGY_CAVEAT: ""
+
+  # Metadata rationale (client-confirmed vs assumed)
+  TIMEZONE_DESC: ""
+  TIMEZONE_RATIONALE: ""
+  BUSINESS_HOURS_DESC: ""
+  BUSINESS_HOURS_RATIONALE: ""
+  CLOSURES_DESC: ""
+  CLOSURES_RATIONALE: ""
+  DATE_RANGE: ""
+  DAYS_ANALYZED: ""
+  WEEKS_IN_RANGE: ""
+
+  # Totals + percent breakdowns
+  TOTAL_RECORDS: ""
+  TOTAL_INBOUND: ""
+  TOTAL_OUTBOUND: ""
+  INBOUND_PCT: ""
+  OUTBOUND_PCT: ""
+
+  # Open-hours KPIs
+  ANSWER_RATE: ""
+  MISS_RATE: ""
+  GRADE: ""
+  ANSWER_RATE_COLOR: ""
+  GRADE_BG_COLOR: ""
+  GRADE_TEXT_COLOR: ""
+
+  # Count/weekly math
+  ANSWERED_COUNT: ""
+  MISSED_COUNT: ""
+  ANSWERED_PCT: ""
+  MISSED_PCT: ""
+  MISSED_OPEN_HOURS: ""
+  MISSED_PER_WEEK: ""
+  MISSED_PER_DAY: ""
+  MISS_RATIO: ""
+
+  # Daily averages
+  AVG_CALLS_DAY: ""
+  AVG_INBOUND_DAY: ""
+  AVG_ANSWERED_DAY: ""
+  PEAK_DAY: ""
+
+  # Concurrency distribution
+  CONC_0_COUNT: ""
+  CONC_0_PCT: ""
+  CONC_1_COUNT: ""
+  CONC_1_PCT: ""
+  CONC_2_COUNT: ""
+  CONC_2_PCT: ""
+  CONC_3_COUNT: ""
+  CONC_3_PCT: ""
+  CONC_4PLUS_COUNT: ""
+  CONC_4PLUS_PCT: ""
+
+  # Worst windows
+  WORST_HOUR_1: ""
+  WORST_HOUR_1_COUNT: ""
+  WORST_HOUR_1_RATE: ""
+  WORST_HOUR_2: ""
+  WORST_HOUR_2_COUNT: ""
+  WORST_HOUR_2_RATE: ""
+  WORST_HOUR_3: ""
+  WORST_HOUR_3_COUNT: ""
+  WORST_HOUR_3_RATE: ""
+
+  # Root Cause
+  PROCESS_MISS_PCT: ""
+  CAPACITY_MISS_PCT: ""
+
+  # FTE + shrinkage
+  BASE_FTE: ""
+  SHRINKAGE_FTE: ""
+  SHRINKAGE_PCT: ""
+
+  # Pricing (formatted for display; template already includes `$`)
+  INBOUND_WEEKLY: ""
+  INBOUND_MONTHLY: ""
+  RHC_WEEKLY: ""
+  RHC_MONTHLY: ""
+  RHC_GROWTH_WEEKLY: ""
+  RHC_GROWTH_MONTHLY: ""
+  HIRE_WEEKLY: ""
+  HIRE_MONTHLY: ""
+  HIRE_COST_ANNUAL: ""
+
+  # Pilot injection (optional)
+  PILOT_INVESTMENT_ROW: ""
+  WORLD_CLASS_ANSWER_RATE_LINE: ""
+
+  # Revenue Leak (formatted for display; template already includes `$`)
+  WEEKLY_LEAK: ""
+  MONTHLY_LEAK: ""
+  ANNUAL_LEAK: ""
+  APPT_SEEKING_PCT: ""
+  NEW_PATIENT_PCT: ""
+  CONVERSION_PCT: ""
+  AVG_APPT_VALUE: ""

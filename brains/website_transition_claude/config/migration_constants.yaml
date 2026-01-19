@@ -1,0 +1,212 @@
+# Migration Constants - Website Transition
+# DO NOT MODIFY without approval
+# These values enforce business rules and prevent LLM improvisation
+
+# ═══════════════════════════════════════════════════════════════════
+# DATA THRESHOLDS
+# ═══════════════════════════════════════════════════════════════════
+data_thresholds:
+  # Minimum acceptable values (below these = likely data error)
+  MIN_INDEXABLE_URLS: 10          # Sites smaller than this are suspicious
+  MIN_GSC_DATA_ROWS: 1            # Must have at least some traffic data
+  MIN_CRAWL_ROWS: 10              # Crawl should find at least 10 URLs
+
+  # Maximum acceptable failure rates
+  MAX_REDIRECT_FAILURE_RATE: 0.10 # 10% max redirect failures
+  MAX_BROKEN_LINKS: 5             # More than 5 = stop and fix
+  MAX_REDIRECT_CHAIN_LENGTH: 1    # No chains (A→B only, not A→B→C)
+
+  # High-value thresholds (items above these are "critical")
+  HIGH_TRAFFIC_MONTHLY: 100       # URLs with >100 visits/month need individual testing
+  HIGH_BACKLINKS: 10              # URLs with >10 backlinks are critical
+  TOP_TRAFFIC_TEST_COUNT: 20      # Test top 20 URLs by traffic
+  TOP_BACKLINK_TEST_COUNT: 10     # Test top 10 URLs by backlinks
+
+# ═══════════════════════════════════════════════════════════════════
+# CORE WEB VITALS TARGETS
+# ═══════════════════════════════════════════════════════════════════
+cwv_targets:
+  # Target values (must meet for launch approval)
+  LCP_TARGET_SECONDS: 2.5         # Largest Contentful Paint
+  INP_TARGET_MS: 200              # Interaction to Next Paint
+  CLS_TARGET: 0.1                 # Cumulative Layout Shift
+
+  # Sanity check maximums (above these = measurement error)
+  LCP_SANITY_MAX: 10.0            # LCP > 10s suggests test failure
+  INP_SANITY_MAX: 1000            # INP > 1000ms suggests test failure
+  CLS_SANITY_MAX: 1.0             # CLS > 1 suggests measurement error
+
+  # Acceptable regression from baseline
+  LCP_REGRESSION_TOLERANCE_PCT: 10  # Can't be >10% worse than baseline
+  INP_REGRESSION_TOLERANCE_PCT: 10
+  CLS_REGRESSION_TOLERANCE: 0.05    # Can't be >0.05 worse than baseline
+
+# ═══════════════════════════════════════════════════════════════════
+# REDIRECT RULES
+# ═══════════════════════════════════════════════════════════════════
+redirect_rules:
+  # Allowed redirect types
+  PERMANENT_REDIRECT_CODE: 301    # For permanent URL changes
+  PERMANENT_STRICT_CODE: 308      # For permanent, preserve method
+  TEMPORARY_REDIRECT_CODE: 302    # Should NOT use for migrations
+  GONE_CODE: 410                  # For intentionally removed pages
+
+  # Chain limits
+  MAX_CHAIN_HOPS: 1               # A→B only, never A→B→C
+
+  # Homepage redirect limits
+  MAX_HOMEPAGE_REDIRECTS_PCT: 5   # Max 5% of URLs can redirect to homepage
+  # (Above this triggers soft-404 spam warning)
+
+# ═══════════════════════════════════════════════════════════════════
+# FILE FORMAT REQUIREMENTS
+# ═══════════════════════════════════════════════════════════════════
+file_formats:
+  # Required file types
+  redirect_map:
+    format: "json"
+    schema: "vercel_redirects_v1"
+    required_fields: ["source", "destination", "permanent"]
+
+  sitemap:
+    format: "xml"
+    schema: "sitemap_0.9"
+    max_urls: 50000
+
+  robots_txt:
+    required_directives: ["User-agent", "Sitemap"]
+    must_allow: ["/", "/services/", "/contact/"]
+
+  master_url_sheet:
+    format: "csv"
+    required_columns:
+      - "old_url"
+      - "new_url"
+      - "action"
+      - "redirect_type"
+      - "traffic"
+      - "backlinks"
+    optional_columns:
+      - "notes"
+      - "h1"
+      - "title"
+      - "canonical"
+
+# ═══════════════════════════════════════════════════════════════════
+# SCHEMA REQUIREMENTS
+# ═══════════════════════════════════════════════════════════════════
+schema_requirements:
+  # Required schema types
+  site_wide:
+    - "LocalBusiness"
+    - "Organization"
+    - "WebSite"
+    - "BreadcrumbList"
+
+  page_level:
+    service_pages: ["Service"]
+    faq_pages: ["FAQPage"]
+    contact_page: ["ContactPoint"]
+
+  # Validation requirements
+  must_validate: true             # Must pass Google Rich Results Test
+  validation_tool: "google_rich_results_test"
+
+# ═══════════════════════════════════════════════════════════════════
+# QA REQUIREMENTS
+# ═══════════════════════════════════════════════════════════════════
+qa_requirements:
+  # Pre-launch checks (ALL must pass)
+  mandatory_checks:
+    - "no_broken_internal_links"
+    - "all_canonicals_correct"
+    - "schema_validates"
+    - "no_redirect_chains"
+    - "sitemap_matches_indexable"
+    - "robots_txt_allows_crawling"
+    - "ga4_tracking_verified"
+    - "gsc_verification_present"
+
+  # Critical page tests (must test individually)
+  critical_page_tests:
+    - "homepage"
+    - "service_pages_top_5"
+    - "contact_page"
+    - "location_pages"
+
+  # Redirect testing
+  redirect_testing:
+    test_top_n_by_traffic: 20
+    test_top_n_by_backlinks: 10
+    test_all_money_pages: true
+
+# ═══════════════════════════════════════════════════════════════════
+# LAUNCH REQUIREMENTS
+# ═══════════════════════════════════════════════════════════════════
+launch_requirements:
+  # Pre-DNS-swap checklist
+  pre_swap:
+    - "wp_content_frozen"
+    - "all_redirects_deployed"
+    - "staging_qa_passed"
+    - "rollback_plan_documented"
+    - "dns_records_documented"
+
+  # Post-DNS-swap checklist
+  post_swap:
+    - "site_accessible"
+    - "ssl_valid"
+    - "redirects_working"
+    - "sitemap_submitted_gsc"
+    - "ga4_tracking_firing"
+
+  # Monitoring period
+  monitoring:
+    duration_days: 30
+    check_frequency: "daily"
+    alert_on:
+      - "crawl_errors_increase"
+      - "index_coverage_drop"
+      - "ranking_drops"
+      - "cwv_regression"
+
+# ═══════════════════════════════════════════════════════════════════
+# WORDPRESS GHOST URL HANDLING
+# ═══════════════════════════════════════════════════════════════════
+ghost_url_policies:
+  # Default actions for WordPress-generated URLs
+  tag_archives:
+    action: "noindex"
+    reason: "Low value, potential duplicate content"
+
+  author_archives:
+    action: "noindex"
+    reason: "Single author sites don't need author pages"
+
+  date_archives:
+    action: "noindex"
+    reason: "Rarely useful for local business sites"
+
+  attachment_pages:
+    action: "redirect_to_parent"
+    reason: "Attachment pages are duplicate content"
+
+  search_pages:
+    action: "noindex"
+    reason: "Internal search results shouldn't be indexed"
+
+  pagination:
+    action: "canonical_to_page_1"
+    reason: "Pagination should consolidate to first page"
+
+# ═══════════════════════════════════════════════════════════════════
+# RECONCILIATION TOLERANCES
+# ═══════════════════════════════════════════════════════════════════
+reconciliation:
+  # Allowed differences between data sources
+  URL_COUNT_TOLERANCE_PCT: 5      # Crawl vs sitemap count
+  TRAFFIC_SUM_TOLERANCE_PCT: 10   # GSC totals vs page sums
+
+  # Alerting thresholds
+  ALERT_IF_CRAWL_SITEMAP_DIFF_GT: 10  # Alert if >10 URL difference
+  ALERT_IF_REDIRECT_MISMATCH_GT: 5    # Alert if >5 redirects don't match

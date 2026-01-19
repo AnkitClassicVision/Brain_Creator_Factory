@@ -1,0 +1,317 @@
+brain:
+  id: "website-transition-claude-001"
+  name: "website_transition_claude"
+  version: "1.0.0"
+  created_at: "2026-01-15T00:00:00+00:00"
+  updated_at: "2026-01-15T00:00:00+00:00"
+  purpose: "Migrate WordPress sites to GitHub/Vercel workflow without SEO damage, preserving rankings and backlinks while improving local SEO structure and performance."
+
+objectives:
+  primary_goal: "Execute a complete WordPress to Vercel migration that protects existing SEO equity, implements proper redirect strategy, and improves site performance through Core Web Vitals optimization."
+  objectives:
+    - description: "Validate keyword strategy and page mapping"
+      success_criteria:
+        - "Keyword universe built with all intent buckets (service+city, near-me, problem-based, price/insurance, brand/comparison, location modifiers)"
+        - "Every target keyword maps to a page (existing or planned)"
+        - "Competitor analysis completed for top services"
+        - "Priority scoring applied to all keyword clusters"
+      priority: 1
+    - description: "Complete URL inventory and redirect mapping"
+      success_criteria:
+        - "Full crawl completed with all indexable URLs inventoried"
+        - "GSC data pulled (top pages, queries, external links)"
+        - "Backlink data integrated from Ahrefs/Semrush"
+        - "Master URL Sheet complete with action for every URL"
+        - "All URLs with traffic or backlinks have deliberate outcome"
+      priority: 1
+    - description: "Implement future-state architecture with redirects"
+      success_criteria:
+        - "URL structure stable for money pages"
+        - "Consolidations only when intent matches"
+        - "One-to-one redirects where possible"
+        - "No redirect-everything-to-homepage pattern"
+        - "Vercel edge redirects configured correctly"
+      priority: 1
+    - description: "Build and deploy to GitHub/Vercel"
+      success_criteria:
+        - "Next.js repo created with proper structure"
+        - "Content management system selected and configured"
+        - "Preview/staging environments noindexed"
+        - "Production environment indexable"
+      priority: 1
+    - description: "Implement technical SEO elements"
+      success_criteria:
+        - "One H1 per page describing core intent"
+        - "Titles match intent + location where relevant"
+        - "Meta descriptions sell the click"
+        - "Canonical tags on all pages"
+        - "Schema implemented (LocalBusiness, WebSite, BreadcrumbList, Service, FAQPage)"
+      priority: 1
+    - description: "Achieve Core Web Vitals targets"
+      success_criteria:
+        - "LCP <= 2.5s"
+        - "INP <= 200ms"
+        - "CLS <= 0.1"
+        - "Performance budget defined and enforced"
+        - "Third-party scripts minimized"
+      priority: 1
+    - description: "Complete QA and launch successfully"
+      success_criteria:
+        - "No broken internal links"
+        - "Correct canonicals throughout"
+        - "Schema validates"
+        - "No redirect chains"
+        - "XML sitemap matches indexable pages"
+        - "Robots.txt correct for production"
+        - "GA4 and GSC tracking verified"
+      priority: 1
+  deliverables:
+    - name: "keyword_universe.csv"
+      format: "CSV (keyword clusters with scoring)"
+      required: true
+    - name: "master_url_sheet.csv"
+      format: "CSV (complete URL inventory with actions)"
+      required: true
+    - name: "redirect_map.json"
+      format: "JSON (Vercel redirect configuration)"
+      required: true
+    - name: "technical_seo_audit.json"
+      format: "JSON (H1, meta, schema audit results)"
+      required: true
+    - name: "cwv_report.json"
+      format: "JSON (Core Web Vitals baseline and targets)"
+      required: true
+    - name: "qa_checklist.json"
+      format: "JSON (pre-launch QA results)"
+      required: true
+    - name: "launch_manifest.json"
+      format: "JSON (launch configuration and rollback plan)"
+      required: true
+
+constraints:
+  # ═══════════════════════════════════════════════════════════════════
+  # STOP RULES - When to halt and ask user (CRITICAL)
+  # ═══════════════════════════════════════════════════════════════════
+  stop_rules:
+    - condition: "GSC data export returns empty or fails"
+      action: "STOP and ask user - DO NOT proceed without real traffic data"
+      reason: "Redirect priorities require actual traffic data"
+
+    - condition: "Crawl returns < 10 indexable URLs"
+      action: "STOP and ask user - verify crawl configuration"
+      reason: "Suspiciously small site may indicate crawl failure"
+
+    - condition: "Master URL sheet has any row missing 'action' column"
+      action: "STOP and ask user - every URL must have explicit outcome"
+      reason: "Incomplete mappings cause accidental 404s"
+
+    - condition: "Redirect map has destination URL that doesn't exist"
+      action: "STOP and ask user - verify destination pages exist"
+      reason: "Redirecting to 404 wastes link equity"
+
+    - condition: "CWV baseline shows LCP > 10s or INP > 1000ms"
+      action: "STOP and ask user - verify test configuration"
+      reason: "Extreme values suggest measurement error"
+
+    - condition: "Schema validation returns errors"
+      action: "STOP and fix schema - DO NOT proceed with invalid markup"
+      reason: "Invalid schema can harm SERP appearance"
+
+    - condition: "Any required deliverable file is missing"
+      action: "STOP and create missing deliverable - DO NOT skip"
+      reason: "Incomplete audit trail causes post-launch confusion"
+
+    - condition: "Redirect test shows > 10% failure rate"
+      action: "STOP and fix redirects - DO NOT proceed to launch"
+      reason: "High failure rate will cause ranking drops"
+
+    - condition: "Staging crawl finds > 5 broken internal links"
+      action: "STOP and fix links - DO NOT proceed to launch"
+      reason: "Broken links hurt UX and crawlability"
+
+  # ═══════════════════════════════════════════════════════════════════
+  # MUST DO RULES - Mandatory actions (with explicit validations)
+  # ═══════════════════════════════════════════════════════════════════
+  must_do:
+    # === PRE-FLIGHT CHECKS ===
+    - "Run pre-flight validation before starting any phase"
+    - "Verify all required input files exist before processing"
+    - "Load and validate config/migration_constants.yaml at startup"
+
+    # === DATA COLLECTION (with validation) ===
+    - "Keep same URLs whenever possible for money pages"
+    - "Pull GSC data (clicks, impressions, external links) before any structural decisions"
+    - "Verify GSC data contains > 0 rows before proceeding"
+    - "Pull backlink data and verify at least top pages have data"
+    - "Confirm every URL with traffic or backlinks has a deliberate outcome"
+
+    # === REDIRECT MAPPING (with validation) ===
+    - "Use one-to-one redirects as primary strategy"
+    - "Implement Vercel edge redirects for performance"
+    - "Validate redirect_map.json syntax before deploying"
+    - "Verify ALL redirect destinations exist and return 200"
+    - "Test top 20 legacy URLs manually before DNS swap"
+
+    # === TECHNICAL SEO (with validation) ===
+    - "Use one H1 per page describing core intent"
+    - "Set canonical tag on every page"
+    - "Implement LocalBusiness schema site-wide"
+    - "Validate ALL schema with Google's Rich Results Test before launch"
+    - "Verify robots.txt allows crawling in production"
+    - "Verify sitemap.xml contains only indexable URLs"
+
+    # === PERFORMANCE (with validation) ===
+    - "Target LCP <= 2.5s, INP <= 200ms, CLS <= 0.1"
+    - "Measure baseline CWV before migration and compare after"
+    - "If CWV regresses, STOP and optimize before launch"
+
+    # === QA (mandatory - never skip) ===
+    - "Noindex staging/preview environments - verify with crawl"
+    - "Crawl staging before launch to verify no broken links"
+    - "Verify redirect rules work for top legacy URLs before DNS swap"
+    - "Run visual verification on critical pages (homepage, services, contact)"
+
+    # === LAUNCH (with validation) ===
+    - "Submit sitemap to GSC immediately after launch"
+    - "Monitor crawl errors and index coverage post-launch for 30 days"
+    - "Verify GA4 tracking fires on all key pages post-launch"
+
+  # ═══════════════════════════════════════════════════════════════════
+  # MUST NOT RULES - Forbidden actions (NEVER do these)
+  # ═══════════════════════════════════════════════════════════════════
+  must_not:
+    # === NEVER IMPROVISE ===
+    - "Generate redirect mappings from scratch when data is missing - ALWAYS stop and ask"
+    - "Guess or assume traffic/backlink values - ALWAYS use real data"
+    - "Proceed with incomplete Master URL Sheet - EVERY row must be complete"
+    - "Mark a phase complete if validation fails - FIX first"
+
+    # === REDIRECT RULES ===
+    - "Change URLs without a redirect plan"
+    - "Redirect everything to homepage (soft-404 spam pattern)"
+    - "Create redirect chains (A→B→C) - always redirect to final destination"
+    - "Use 302 for permanent moves - use 301 or 308"
+    - "Skip redirect testing for any URL with traffic > 100/month"
+
+    # === STRUCTURE RULES ===
+    - "Launch with big structural rewrites during migration"
+    - "Consolidate pages with different search intent"
+    - "Remove pages without checking traffic and backlinks first"
+    - "Change URL structure of money pages without explicit approval"
+
+    # === TECHNICAL RULES ===
+    - "Proceed without confirming content management workflow for non-technical editors"
+    - "Ship massive client-side hydration when static/SSR is possible"
+    - "Include third-party scripts that kill INP"
+    - "Deploy schema that fails validation"
+    - "Launch with broken internal links"
+
+    # === LAUNCH RULES ===
+    - "Launch without freezing WP content changes first"
+    - "Ignore WordPress ghost URLs (tags, authors, dates, attachments)"
+    - "Break NAP consistency with call tracking numbers"
+    - "Skip any QA step - ALL QA is mandatory"
+    - "Launch without rollback plan documented"
+
+    # === OUTPUT RULES ===
+    - "Deliver any file with unreplaced {{PLACEHOLDER}} tokens"
+    - "Trust command exit code without verifying output files exist"
+    - "Assume generated files are valid without checking size > 0"
+
+  # ═══════════════════════════════════════════════════════════════════
+  # CRITICAL ITEMS - Require extra validation
+  # ═══════════════════════════════════════════════════════════════════
+  critical_items:
+    urls:
+      - "homepage"
+      - "service pages (top 5 by traffic)"
+      - "location pages"
+      - "contact page"
+      - "any page with > 10 backlinks"
+    validation:
+      - "individual redirect test"
+      - "visual verification"
+      - "schema validation"
+      - "CWV measurement"
+
+# ═══════════════════════════════════════════════════════════════════
+# BUSINESS CONSTANTS - Migration-specific minimums and thresholds
+# ═══════════════════════════════════════════════════════════════════
+config:
+  thresholds:
+    # Minimum acceptable values
+    MIN_INDEXABLE_URLS: 10                # Below this suggests crawl failure
+    MIN_GSC_DATA_ROWS: 1                  # Must have some real data
+    MAX_REDIRECT_FAILURE_RATE: 0.10       # 10% max failures
+    MAX_BROKEN_LINKS: 5                   # Stop if more than 5
+    MAX_REDIRECT_CHAIN_LENGTH: 1          # No chains allowed (A→B only)
+
+    # CWV targets
+    LCP_TARGET_SECONDS: 2.5
+    INP_TARGET_MS: 200
+    CLS_TARGET: 0.1
+
+    # CWV sanity checks (values above these suggest measurement error)
+    LCP_SANITY_MAX: 10.0
+    INP_SANITY_MAX: 1000
+
+    # Traffic thresholds
+    HIGH_TRAFFIC_MONTHLY: 100             # URLs above this need individual testing
+    HIGH_BACKLINKS: 10                    # URLs above this are critical
+
+  reconciliation:
+    # Allowed differences between data sources
+    URL_COUNT_TOLERANCE_PCT: 5            # Crawl vs sitemap count
+    TRAFFIC_SUM_TOLERANCE_PCT: 10         # GSC totals vs page sums
+
+learning:
+  enabled: true
+  mode: "auto_safe"
+  auto_update:
+    edge_priorities: true
+    relationship_weights: true
+    guard_thresholds: false
+    node_prompts: false
+    add_nodes: false
+    remove_nodes: false
+    add_edges: false
+    remove_edges: false
+  requires_approval:
+    - "structural_changes"
+    - "constraint_changes"
+    - "redirect_rule_changes"
+    - "cwv_target_changes"
+    - "new_skills"
+  feedback_sources:
+    - "outcome"
+    - "user_feedback"
+    - "quality_scores"
+    - "gsc_metrics"
+    - "cwv_scores"
+
+execution:
+  max_steps: 300
+  max_parallel: 5
+  timeout_seconds: 14400
+  max_retries: 3
+
+skills:
+  available:
+    - "web_fetch"
+    - "screaming_frog"
+    - "gsc_export"
+    - "ahrefs_api"
+    - "vercel_cli"
+    - "lighthouse"
+  auto_discover: true
+
+metadata:
+  tags:
+    - "seo"
+    - "migration"
+    - "wordpress"
+    - "vercel"
+    - "nextjs"
+    - "local-seo"
+    - "cwv"
+  notes: "Derived from website_transition_instructions.md - comprehensive WordPress to Vercel migration with SEO protection."
